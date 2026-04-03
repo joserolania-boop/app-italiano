@@ -1090,7 +1090,7 @@ function evaluateFreeText(levelId, response, accepted, expectedTokens, feedback,
         };
     }
 
-    const hits = expectedTokens.filter((token) => normalized.includes(normalizeText(token))).length;
+    const hits = countExpectedMatches(normalized, words, expectedTokens);
 
     if (!isPrecisionLevel && hits === expectedTokens.length && expectedTokens.length > 0) {
         return {
@@ -1174,9 +1174,9 @@ function evaluateConversation(levelId, response, expectedTokens, minWords, feedb
     const normalized = normalizeText(rawResponse);
     const words = normalized ? normalized.split(/\s+/).filter(Boolean) : [];
     const uniqueWords = new Set(words).size;
-    const hits = expectedTokens.filter((token) => normalized.includes(normalizeText(token))).length;
+    const hits = countExpectedMatches(normalized, words, expectedTokens);
     const ratio = expectedTokens.length ? hits / expectedTokens.length : 0;
-    const structureHits = (expectedStructures || []).filter((structure) => normalized.includes(normalizeText(structure))).length;
+    const structureHits = countExpectedMatches(normalized, words, expectedStructures || []);
     const isAdvancedLevel = getModuleNumber(levelId) >= 5;
     const hasLinking = hasLinkedProduction(rawResponse, normalized);
     const hasEnoughVariety = uniqueWords >= Math.max(4, Math.floor(words.length * (isAdvancedLevel ? 0.55 : 0.45)));
@@ -1267,6 +1267,33 @@ function buildConversationAnswer(expectedTokens, expectedStructures) {
         parts.push(`estructura: ${expectedStructures.join(" / ")}`);
     }
     return parts.join(" | ");
+}
+
+function countExpectedMatches(normalized, words, expectedItems) {
+    return (expectedItems || []).filter((item) => matchesExpectedItem(normalized, words, item)).length;
+}
+
+function matchesExpectedItem(normalized, words, item) {
+    const rawItem = String(item || "").trim();
+    if (!rawItem) {
+        return false;
+    }
+
+    if (rawItem.startsWith("-")) {
+        const suffix = normalizeText(rawItem).replace(/\s+/g, "");
+        return Boolean(suffix) && words.some((word) => word.endsWith(suffix));
+    }
+
+    const normalizedItem = normalizeText(rawItem);
+    if (!normalizedItem) {
+        return false;
+    }
+
+    if (normalizedItem.includes(" ")) {
+        return normalized.includes(normalizedItem);
+    }
+
+    return words.includes(normalizedItem);
 }
 
 function hasLinkedProduction(rawResponse, normalized) {
