@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./styles.css?v=8">
+    <link rel="stylesheet" href="./styles.css?v=9">
 </head>
 <body>
 
@@ -102,7 +102,7 @@
                         <span class="learning-step">Paso 2</span>
                         <h3>Ficha teorica</h3>
                     </div>
-                    <span class="learning-badge">Regla minima</span>
+                    <span class="learning-badge">Regla + guia</span>
                 </div>
                 <div class="theory-grid">
                     <div>
@@ -120,6 +120,24 @@
                     <div>
                         <span class="theory-label">Error tipico</span>
                         <p id="theory-mistake" class="learning-copy"></p>
+                    </div>
+                </div>
+                <div class="theory-essentials">
+                    <div class="theory-panel">
+                        <span class="theory-label">Formula util</span>
+                        <p id="theory-formula" class="learning-copy"></p>
+                    </div>
+                    <div class="theory-panel">
+                        <span class="theory-label">Usalo cuando...</span>
+                        <p id="theory-usage" class="learning-copy"></p>
+                    </div>
+                    <div class="theory-panel theory-panel-wide">
+                        <span class="theory-label">No des por sabido</span>
+                        <ul id="theory-assumptions" class="theory-list"></ul>
+                    </div>
+                    <div class="theory-panel theory-panel-wide">
+                        <span class="theory-label">Checklist antes de responder</span>
+                        <ul id="theory-checklist" class="theory-list"></ul>
                     </div>
                 </div>
             </article>
@@ -168,6 +186,6 @@
 </div>
 
 <script src="./m1-exercises.js?v=15"></script>
-<script src="./app.js?v=12"></script>
+<script src="./app.js?v=13"></script>
 </body>
 </html>

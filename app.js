@@ -76,6 +76,10 @@ function cacheDom() {
     dom.theoryContrast = document.getElementById("theory-contrast");
     dom.theoryExample = document.getElementById("theory-example");
     dom.theoryMistake = document.getElementById("theory-mistake");
+    dom.theoryFormula = document.getElementById("theory-formula");
+    dom.theoryUsage = document.getElementById("theory-usage");
+    dom.theoryAssumptions = document.getElementById("theory-assumptions");
+    dom.theoryChecklist = document.getElementById("theory-checklist");
 
     dom.backToLevels = document.getElementById("back-to-levels");
 
@@ -391,6 +395,7 @@ function renderLesson() {
 function renderLearningGuide(level) {
     const guide = getLearningGuide(level.id);
     const levelState = getExerciseState(level.id);
+    const support = buildTheorySupport(level, guide);
 
     dom.pretestQuestion.textContent = guide?.pretest?.question || "Piensa como responderias antes de estudiar este nivel.";
     dom.pretestInput.value = levelState.pretestResponse || "";
@@ -406,6 +411,106 @@ function renderLearningGuide(level) {
     dom.theoryContrast.textContent = guide?.theory?.contrast || "Compara esta estructura con el espanol antes de responder.";
     dom.theoryExample.textContent = guide?.theory?.example || (level.immersiveInput || "Sin ejemplo disponible.");
     dom.theoryMistake.textContent = guide?.theory?.mistake || (level.patchPriority || "No repitas el error mas frecuente del nivel.");
+    dom.theoryFormula.textContent = support.formula;
+    dom.theoryUsage.textContent = support.usage;
+    renderTheoryList(dom.theoryAssumptions, support.assumptions);
+    renderTheoryList(dom.theoryChecklist, support.checklist);
+}
+
+function renderTheoryList(container, items) {
+    container.innerHTML = "";
+    (items || []).filter(Boolean).forEach((item) => {
+        const entry = document.createElement("li");
+        entry.textContent = item;
+        container.appendChild(entry);
+    });
+}
+
+function buildTheorySupport(level, guide) {
+    const attributes = extractXmlAttributes(level.grammar);
+    const focus = cleanGrammarText(attributes.foco || "");
+    const transfer = cleanGrammarText(attributes.transferencia || "");
+    const example = guide?.theory?.example || level.immersiveInput || "Sin ejemplo disponible.";
+    const rule = guide?.theory?.rule || simplifyGrammar(level.grammar);
+    const contrast = guide?.theory?.contrast || transfer || "el italiano no siempre copia el espanol palabra por palabra";
+    const mistake = guide?.theory?.mistake || level.patchPriority || "no responder con una estructura incompleta";
+    const moduleNumber = getModuleNumber(level.id);
+
+    return {
+        formula: buildTheoryFormula(focus, example, rule),
+        usage: buildTheoryUsage(level.objective, moduleNumber),
+        assumptions: buildTheoryAssumptions({ focus, contrast, mistake }),
+        checklist: buildTheoryChecklist({ focus, example, mistake, moduleNumber }),
+    };
+}
+
+function buildTheoryFormula(focus, example, rule) {
+    const shortExample = firstSentence(example);
+    if (focus) {
+        return `Piensa primero en este molde: ${focus}. Si dudas, copia una frase corta como ${shortExample}`;
+    }
+    return `${rule} Si dudas, apóyate en este ejemplo: ${shortExample}`;
+}
+
+function buildTheoryUsage(objective, moduleNumber) {
+    const cleanObjective = String(objective || "").trim().toLowerCase();
+    const closing = moduleNumber >= 5
+        ? "Empieza por una version corta correcta y luego ampliala con una segunda idea."
+        : "Empieza por una frase corta y correcta antes de complicarla.";
+
+    if (cleanObjective) {
+        return `Usalo cuando quieras ${cleanObjective}. ${closing}`;
+    }
+
+    return `Usalo en respuestas del tipo que practica este nivel. ${closing}`;
+}
+
+function buildTheoryAssumptions(context) {
+    const items = [];
+
+    if (context.contrast) {
+        items.push(`No supongas que funciona igual que en espanol: ${context.contrast}`);
+    }
+    if (context.focus) {
+        items.push(`No des por sabida la estructura central: ${context.focus}`);
+    }
+    if (context.mistake) {
+        items.push(`Antes de responder, bloquea este error: ${context.mistake}`);
+    }
+
+    return items.slice(0, 3);
+}
+
+function buildTheoryChecklist(context) {
+    const items = [];
+
+    if (context.focus) {
+        items.push(`He usado la estructura principal del nivel: ${context.focus}.`);
+    }
+    if (context.example) {
+        items.push(`Mi respuesta se parece al molde del ejemplo y no a una traduccion palabra por palabra.`);
+    }
+    if (context.mistake) {
+        items.push(`He revisado este punto conflictivo: ${context.mistake}.`);
+    }
+
+    if (context.moduleNumber >= 5) {
+        items.push("He unido las ideas con una estructura clara y no he respondido de forma demasiado telegráfica.");
+    } else {
+        items.push("He escrito una frase completa con verbo y no solo palabras sueltas.");
+    }
+
+    return items.slice(0, 4);
+}
+
+function firstSentence(text) {
+    const cleanText = String(text || "").trim();
+    if (!cleanText) {
+        return "Sin ejemplo disponible.";
+    }
+
+    const firstChunk = cleanText.split(/[.!?]/)[0]?.trim();
+    return firstChunk ? `${firstChunk}.` : cleanText;
 }
 
 function renderExerciseArea(level) {

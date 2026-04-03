@@ -424,6 +424,35 @@ h1, h2, h3 {
     gap: 14px;
 }
 
+.theory-essentials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.theory-panel {
+    padding: 14px;
+    border-radius: var(--radius);
+    background: var(--bg);
+    border: 1px solid var(--border-light);
+}
+
+.theory-panel-wide {
+    grid-column: 1 / -1;
+}
+
+.theory-list {
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: .9rem;
+    line-height: 1.6;
+}
+
+.theory-list li + li {
+    margin-top: 6px;
+}
+
 /* ─── EXERCISES ─── */
 .exercises-area {
     background: var(--surface);
@@ -645,6 +674,7 @@ h1, h2, h3 {
     .lesson-header-actions { align-self: flex-start; }
     .help-row { grid-template-columns: 1fr; }
     .theory-grid { grid-template-columns: 1fr; }
+    .theory-essentials { grid-template-columns: 1fr; }
     .level-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
     .exercises-area { padding: 14px; }
 }
