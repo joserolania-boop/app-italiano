@@ -688,6 +688,10 @@ function getLearningRequirements(levelId, pack) {
 
     if (moduleNumber === 1 && lessonNumber >= 8) {
         passPercentage = 76;
+    } else if (moduleNumber >= 10) {
+        passPercentage = 88;
+    } else if (moduleNumber >= 9) {
+        passPercentage = 84;
     } else if (moduleNumber >= 2) {
         passPercentage = 80;
     }
@@ -700,6 +704,16 @@ function getLearningRequirements(levelId, pack) {
         conversation: 0.65,
         shadowing: kinds.has("shadowing") ? 1 : 0,
     };
+
+    if (moduleNumber >= 10) {
+        minByKind.translation = 0.8;
+        minByKind.cloze = 0.8;
+        minByKind.conversation = 0.78;
+    } else if (moduleNumber >= 9) {
+        minByKind.translation = 0.75;
+        minByKind.cloze = 0.75;
+        minByKind.conversation = 0.72;
+    }
 
     return {
         passPercentage,
@@ -1061,14 +1075,17 @@ function evaluateFreeText(levelId, response, accepted, expectedTokens, feedback,
     const uniqueWords = new Set(words).size;
     const moduleNumber = getModuleNumber(levelId);
     const isPrecisionLevel = moduleNumber >= 6;
-    const structureHits = (expectedStructures || []).filter((structure) => normalized.includes(normalizeText(structure))).length;
+    const isExpertLevel = moduleNumber >= 10;
+    const structureHits = countExpectedMatches(normalized, words, expectedStructures || []);
     const acceptedWordCounts = (accepted || [])
         .map((item) => normalizeText(item).split(/\s+/).filter(Boolean).length)
         .filter(Boolean);
     const targetWordCount = acceptedWordCounts.length ? Math.min(...acceptedWordCounts) : Math.max(expectedTokens.length, 5);
-    const enoughLength = words.length >= Math.max(4, targetWordCount - (isPrecisionLevel ? 1 : 3));
-    const hasEnoughVariety = uniqueWords >= Math.max(4, Math.floor(words.length * (isPrecisionLevel ? 0.6 : 0.45)));
-    const hasStructure = !isPrecisionLevel || expectedStructures.length === 0 || structureHits >= Math.max(1, Math.ceil(expectedStructures.length / 2));
+    const enoughLength = words.length >= Math.max(4, targetWordCount - (isExpertLevel ? 0 : isPrecisionLevel ? 1 : 3));
+    const varietyRatio = isExpertLevel ? 0.68 : isPrecisionLevel ? 0.6 : 0.45;
+    const hasEnoughVariety = uniqueWords >= Math.max(4, Math.floor(words.length * varietyRatio));
+    const minStructures = isExpertLevel ? Math.max(1, Math.ceil(expectedStructures.length * 0.7)) : Math.max(1, Math.ceil(expectedStructures.length / 2));
+    const hasStructure = !isPrecisionLevel || expectedStructures.length === 0 || structureHits >= minStructures;
 
     if (!normalized) {
         return {
@@ -1177,10 +1194,14 @@ function evaluateConversation(levelId, response, expectedTokens, minWords, feedb
     const hits = countExpectedMatches(normalized, words, expectedTokens);
     const ratio = expectedTokens.length ? hits / expectedTokens.length : 0;
     const structureHits = countExpectedMatches(normalized, words, expectedStructures || []);
-    const isAdvancedLevel = getModuleNumber(levelId) >= 5;
+    const moduleNumber = getModuleNumber(levelId);
+    const isAdvancedLevel = moduleNumber >= 5;
+    const isExpertLevel = moduleNumber >= 10;
     const hasLinking = hasLinkedProduction(rawResponse, normalized);
-    const hasEnoughVariety = uniqueWords >= Math.max(4, Math.floor(words.length * (isAdvancedLevel ? 0.55 : 0.45)));
-    const successStructure = !isAdvancedLevel || expectedStructures.length === 0 || structureHits >= Math.max(1, Math.ceil(expectedStructures.length / 2));
+    const varietyRatio = isExpertLevel ? 0.68 : isAdvancedLevel ? 0.55 : 0.45;
+    const hasEnoughVariety = uniqueWords >= Math.max(4, Math.floor(words.length * varietyRatio));
+    const structureGoal = isExpertLevel ? Math.max(1, Math.ceil(expectedStructures.length * 0.7)) : Math.max(1, Math.ceil(expectedStructures.length / 2));
+    const successStructure = !isAdvancedLevel || expectedStructures.length === 0 || structureHits >= structureGoal;
     const partialStructure = !isAdvancedLevel || hasLinking || structureHits > 0;
 
     if (!normalized) {
@@ -1193,17 +1214,17 @@ function evaluateConversation(levelId, response, expectedTokens, minWords, feedb
         };
     }
 
-    if (ratio === 1 && words.length >= minWords && hasEnoughVariety && successStructure) {
+    if (ratio === 1 && words.length >= minWords && hasEnoughVariety && successStructure && (!isExpertLevel || hasLinking)) {
         return {
             score: 1,
             status: "success",
             label: "Muy bien",
-            feedback: isAdvancedLevel ? "Respuesta completa y con estructura suficiente para este nivel." : "Respuesta completa para este nivel.",
+            feedback: isExpertLevel ? "Respuesta completa, cohesionada y con control suficiente para el tramo final." : isAdvancedLevel ? "Respuesta completa y con estructura suficiente para este nivel." : "Respuesta completa para este nivel.",
             answer: buildConversationAnswer(expectedTokens, expectedStructures),
         };
     }
 
-    if (ratio >= 0.5 && words.length >= Math.max(4, minWords - 2) && partialStructure) {
+    if (ratio >= (isExpertLevel ? 0.7 : 0.5) && words.length >= Math.max(4, minWords - (isExpertLevel ? 1 : 2)) && partialStructure) {
         return {
             score: isAdvancedLevel ? 0.55 : 0.65,
             status: "partial",
@@ -1309,6 +1330,19 @@ function hasLinkedProduction(rawResponse, normalized) {
         "mentre",
         "tuttavia",
         "inoltre",
+        "pertanto",
+        "ciononostante",
+        "pur",
+        "sebbene",
+        "benche",
+        "inoltre",
+        "infine",
+        "in primo luogo",
+        "in secondo luogo",
+        "in breve",
+        "ovvero",
+        "cioe",
+        "in realta",
         "secondo me",
         "penso che",
         "spero che",

@@ -5,13 +5,12 @@ App web local basada en el roadmap `Roadmap_Maestro_Italiano.md` para trabajar e
 ## Incluye
 
 - Navegador por modulos y niveles.
-- Sesion PAL fija por nivel.
-- Prompt diario copiable.
-- Evaluacion automatica de reglas de desbloqueo por modulo.
-- Notas de sesion y progreso persistente con `localStorage`.
-- Sugerencias de `Self-Refine` a partir del bloque de patches del roadmap.
-- Entrenador interactivo completo para `M1-L1` a `M1-L10` con `TI`, `CH`, `CR`, `SH` y `MP` segun el nivel.
-- Correccion basica dentro de la app para respuestas escritas, huecos, elecciones y shadowing marcado.
+- Curso completo `M1-L1` a `M10-L10` con `100 niveles` operativos.
+- Pretest rapido y ficha teorica en cada nivel.
+- Ejercicios `TI`, `CH`, `CR` y `SH` en todo el recorrido interactivo.
+- Evaluacion adaptativa con requisitos mas exigentes en los tramos altos `C1-C2`.
+- Progreso, notas, repasos y shadowing guardados en `localStorage`.
+- Roadmap curricular integrado directamente desde `Roadmap_Maestro_Italiano.md`.
 
 ## Arranque rapido en Windows
 
@@ -21,6 +20,6 @@ App web local basada en el roadmap `Roadmap_Maestro_Italiano.md` para trabajar e
 
 Esto abre `http://localhost:8080` y sirve los archivos con Python.
 
-## Uso sin servidor
+## Estado del proyecto
 
-Tambien puedes abrir `index.html` directamente y usar el boton `Cargar roadmap manualmente` para importar el archivo markdown.
+La app queda cerrada como producto local funcional de aprendizaje de italiano A1-C2: contenido completo, progresion por niveles, teoria, practica, shadowing y evaluacion interna.
