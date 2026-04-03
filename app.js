@@ -80,6 +80,8 @@ function cacheDom() {
     dom.theoryUsage = document.getElementById("theory-usage");
     dom.theoryAssumptions = document.getElementById("theory-assumptions");
     dom.theoryChecklist = document.getElementById("theory-checklist");
+    dom.theoryReferenceBox = document.getElementById("theory-reference-box");
+    dom.theoryReferenceList = document.getElementById("theory-reference-list");
 
     dom.backToLevels = document.getElementById("back-to-levels");
 
@@ -415,6 +417,7 @@ function renderLearningGuide(level) {
     dom.theoryUsage.textContent = support.usage;
     renderTheoryList(dom.theoryAssumptions, support.assumptions);
     renderTheoryList(dom.theoryChecklist, support.checklist);
+    renderTheoryReferences(level, guide);
 }
 
 function renderTheoryList(container, items) {
@@ -511,6 +514,137 @@ function firstSentence(text) {
 
     const firstChunk = cleanText.split(/[.!?]/)[0]?.trim();
     return firstChunk ? `${firstChunk}.` : cleanText;
+}
+
+function renderTheoryReferences(level, guide) {
+    const references = getTheoryReferences(level, guide);
+
+    dom.theoryReferenceList.innerHTML = "";
+
+    if (!references.length) {
+        dom.theoryReferenceBox.classList.add("hidden");
+        dom.theoryReferenceBox.open = false;
+        return;
+    }
+
+    references.forEach((reference) => {
+        dom.theoryReferenceList.appendChild(buildReferenceCard(reference));
+    });
+
+    dom.theoryReferenceBox.classList.remove("hidden");
+}
+
+function getTheoryReferences(level, guide) {
+    const bank = typeof GRAMMAR_REFERENCE_BANK !== "undefined" ? GRAMMAR_REFERENCE_BANK : null;
+    if (!bank) {
+        return [];
+    }
+
+    const explicitKeys = Array.isArray(guide?.referenceKeys) ? guide.referenceKeys : [];
+    const keys = explicitKeys.length ? explicitKeys : inferTheoryReferenceKeys(level, guide);
+
+    return [...new Set(keys)]
+        .map((key) => bank[key])
+        .filter(Boolean)
+        .slice(0, 2);
+}
+
+function inferTheoryReferenceKeys(level, guide) {
+    const haystack = normalizeText([
+        level?.objective,
+        level?.grammar,
+        level?.patchPriority,
+        guide?.theory?.rule,
+        guide?.theory?.contrast,
+        guide?.theory?.mistake,
+    ].filter(Boolean).join(" "));
+
+    const matchers = [
+        { key: "articoli-base", terms: ["articol", "determinativi", "zero articolo", "articulos basicos"] },
+        { key: "essere-presente", terms: ["essere", "sono +", "io/tu"] },
+        { key: "avere-edad", terms: ["avere", "eta", "anni"] },
+        { key: "ore-e-rutina", terms: ["ore", "rutina", "alle ", "tempo basico"] },
+        { key: "presente-regolare", terms: ["-are", "-ere", "-ire", "presente"] },
+        { key: "verbi-irregolari-base", terms: ["irregolar", "vado", "faccio", "vengo"] },
+        { key: "preposizioni-semplici", terms: ["a/in/su/con", "a/in", "preposizioni basiche", "movimiento"] },
+        { key: "preposizioni-articolate", terms: ["al, del, nel, sul", "preposiciones articuladas", "al cinema", "nel bar"] },
+        { key: "plurale-e-concordanza", terms: ["plural", "concordancia", "genero/numero"] },
+        { key: "cortesia-vorrei", terms: ["vorrei", "per favore", "cortesia", "condizionale"] },
+        { key: "riflessivi-base", terms: ["riflessivi", "mi alzo", "particula reflexiva"] },
+        { key: "modali-base", terms: ["dovere", "potere", "volere", "modale"] },
+        { key: "passato-prossimo-avere", terms: ["passato prossimo con avere", "participio regolare"] },
+        { key: "passato-prossimo-essere", terms: ["passato prossimo con essere", "movimiento frecuentes usan essere", "concordancia del participio"] },
+        { key: "ce-ci-sono", terms: ["c'e", "ci sono", "existencia"] },
+        { key: "comparativi-superlativi", terms: ["comparativi", "superlativo", "piu", "meno"] },
+        { key: "clitici-diretti", terms: ["lo/la/li/le", "pronombres directos", "cliticos directos"] },
+        { key: "clitici-indiretti", terms: ["gli/le", "indirectos", "destinatario"] },
+        { key: "ci-ne", terms: ["ci/ne", "ci suele", "ne puede"] },
+        { key: "futuro-semplice", terms: ["futuro semplice", "futuro simple"] },
+        { key: "congiuntivo-trigger", terms: ["congiuntivo", "penso che", "spero che", "non credo che", "temo che"] },
+    ];
+
+    return matchers
+        .filter((matcher) => matcher.terms.some((term) => haystack.includes(normalizeText(term))))
+        .map((matcher) => matcher.key);
+}
+
+function buildReferenceCard(reference) {
+    const card = document.createElement("article");
+    card.className = "reference-card";
+
+    const header = document.createElement("div");
+    header.className = "reference-card-header";
+    header.innerHTML = `
+        <span class="reference-type">${escapeHtml(reference.type || "Referencia")}</span>
+        <h4>${escapeHtml(reference.title || "Referencia util")}</h4>
+    `;
+    card.appendChild(header);
+
+    if (reference.summary) {
+        const summary = document.createElement("p");
+        summary.className = "reference-summary";
+        summary.textContent = reference.summary;
+        card.appendChild(summary);
+    }
+
+    if (Array.isArray(reference.entries) && reference.entries.length) {
+        const rows = document.createElement("div");
+        rows.className = "reference-rows";
+
+        reference.entries.forEach((entry) => {
+            const row = document.createElement("div");
+            row.className = "reference-row";
+            row.innerHTML = `
+                <span class="reference-row-key">${escapeHtml(entry[0] || "")}</span>
+                <span class="reference-row-value">${escapeHtml(entry[1] || "")}</span>
+            `;
+            rows.appendChild(row);
+        });
+
+        card.appendChild(rows);
+    }
+
+    if (Array.isArray(reference.examples) && reference.examples.length) {
+        const examples = document.createElement("ul");
+        examples.className = "reference-examples";
+
+        reference.examples.forEach((example) => {
+            const item = document.createElement("li");
+            item.textContent = example;
+            examples.appendChild(item);
+        });
+
+        card.appendChild(examples);
+    }
+
+    if (reference.note) {
+        const note = document.createElement("p");
+        note.className = "reference-note";
+        note.textContent = reference.note;
+        card.appendChild(note);
+    }
+
+    return card;
 }
 
 function renderExerciseArea(level) {
