@@ -44,6 +44,21 @@ while ($listener.IsListening) {
             continue
         }
 
+        # ── Validacion codigo de desbloqueo premium (test local) ──
+        if ($rel -eq "unlock") {
+            $code = ($ctx.Request.QueryString["code"] ?? "").Trim().ToUpper()
+            # Cambia este valor para probar localmente (en produccion usa la variable de entorno en Netlify)
+            $localUnlockCode = "TEST-1234"
+            $isValid = ($code -eq $localUnlockCode)
+            $json = if ($isValid) { '{"valid":true,"message":"Acceso desbloqueado."}' } else { '{"valid":false,"message":"Codigo no valido."}' }
+            $jsonBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+            $ctx.Response.ContentType = "application/json"
+            $ctx.Response.ContentLength64 = $jsonBytes.Length
+            if (-not $isHead) { $ctx.Response.OutputStream.Write($jsonBytes, 0, $jsonBytes.Length) }
+            $ctx.Response.Close()
+            continue
+        }
+
         $path = Join-Path $root $rel
         if (Test-Path $path -PathType Leaf) {
             $bytes = [System.IO.File]::ReadAllBytes($path)

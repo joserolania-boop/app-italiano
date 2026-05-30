@@ -9,6 +9,8 @@ const KIND_WEIGHTS = {
 };
 const DEFAULT_PASS_PERCENTAGE = 72;
 const DEFAULT_DAILY_GOAL = 40;
+const FREE_MODULE_COUNT = 2; // M1 y M2 gratis; M3-M10 requieren premium
+const FREE_MODULE_COUNT = 2; // M1 y M2 gratis; M3-M10 requieren premium
 
 // Ligas estilo apps 2026: el rango se decide por XP total acumulado.
 const LEAGUES = [
@@ -39,6 +41,7 @@ const state = {
     theme: "light",
     placementDone: false,
     soundOff: false,
+    isPremium: false,
 };
 const dom = {};
 
@@ -142,6 +145,73 @@ function bindEvents() {
     dom.retryBtn.addEventListener("click", onRetryExercises);
     dom.completeBtn.addEventListener("click", onCompleteLevel);
     dom.notesArea.addEventListener("input", onNotesInput);
+
+    // ── Premium / Ko-fi ──
+    document.getElementById("kofi-header-btn")?.addEventListener("click", showUnlockModal);
+    document.getElementById("unlock-code-btn")?.addEventListener("click", onActivateCode);
+    document.getElementById("unlock-code-input")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") onActivateCode();
+    });
+    document.querySelectorAll("[data-close-modal]").forEach((el) => {
+        el.addEventListener("click", (e) => {
+            const modal = e.target.closest(".modal");
+            if (modal) modal.classList.add("hidden");
+        });
+    });
+}
+
+function showUnlockModal() {
+    const modal = document.getElementById("unlock-modal");
+    if (!modal) return;
+    const fb = document.getElementById("unlock-code-feedback");
+    if (fb) { fb.textContent = ""; fb.className = "unlock-code-feedback hidden"; }
+    const input = document.getElementById("unlock-code-input");
+    if (input) input.value = "";
+    modal.classList.remove("hidden");
+    setTimeout(() => input?.focus(), 80);
+}
+
+async function onActivateCode() {
+    const input = document.getElementById("unlock-code-input");
+    const fb = document.getElementById("unlock-code-feedback");
+    const btn = document.getElementById("unlock-code-btn");
+    if (!input || !fb) return;
+
+    const code = input.value.trim().toUpperCase();
+    if (!code) {
+        fb.textContent = "Introduce un código.";
+        fb.className = "unlock-code-feedback error";
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = "Verificando...";
+    fb.textContent = "";
+    fb.className = "unlock-code-feedback hidden";
+
+    try {
+        const resp = await fetch(`/unlock?code=${encodeURIComponent(code)}`);
+        const json = await resp.json().catch(() => ({}));
+        if (resp.ok && json.valid) {
+            state.isPremium = true;
+            persistState();
+            renderModuleTabs();
+            renderLevelGrid();
+            document.getElementById("unlock-modal")?.classList.add("hidden");
+            if (typeof showToast === "function") {
+                showToast("¡Curso desbloqueado! 🎉", "Acceso completo M1–M10 activado.", "xp");
+            }
+        } else {
+            fb.textContent = json.message || "Código no válido. Revísalo e inténtalo de nuevo.";
+            fb.className = "unlock-code-feedback error";
+        }
+    } catch {
+        fb.textContent = "Error de red. Comprueba tu conexión e inténtalo de nuevo.";
+        fb.className = "unlock-code-feedback error";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Activar";
+    }
 }
 
 async function loadRoadmap() {
@@ -266,6 +336,7 @@ function hydrateStateFromStorage() {
             state.theme = saved.theme === "dark" ? "dark" : "light";
             state.placementDone = Boolean(saved.placementDone);
             state.soundOff = Boolean(saved.soundOff);
+            state.isPremium = Boolean(saved.isPremium);
         } catch {
             localStorage.removeItem(STORAGE_KEY);
         }
@@ -306,6 +377,7 @@ function persistState() {
         theme: state.theme,
         placementDone: state.placementDone,
         soundOff: state.soundOff,
+        isPremium: state.isPremium,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
 }
@@ -468,15 +540,21 @@ function renderProgress() {
 function renderModuleTabs() {
     dom.moduleTabs.innerHTML = "";
 
-    state.data.modules.forEach((mod) => {
+    state.data.modules.forEach((mod, modIndex) => {
+        const isLocked = !state.isPremium && modIndex >= FREE_MODULE_COUNT;
         const btn = document.createElement("button");
         btn.type = "button";
-        btn.className = `module-tab ${mod.id === state.activeModuleId ? "active" : ""}`.trim();
+        btn.className = `module-tab ${mod.id === state.activeModuleId ? "active" : ""} ${isLocked ? "locked" : ""}`.trim();
 
         const done = mod.levels.filter((level) => state.completedLevelIds.includes(level.id)).length;
+        const lockBadge = isLocked ? `<span class="tab-lock">🔒</span>` : "";
 
-        btn.innerHTML = `${mod.id} <span class="tab-progress">${done}/${mod.levels.length}</span>`;
+        btn.innerHTML = `${mod.id} ${lockBadge}<span class="tab-progress">${isLocked ? "Premium" : `${done}/${mod.levels.length}`}</span>`;
         btn.addEventListener("click", () => {
+            if (isLocked) {
+                showUnlockModal();
+                return;
+            }
             state.activeModuleId = mod.id;
             const firstLevel = mod.levels[0];
             if (firstLevel) {
@@ -509,6 +587,24 @@ function renderLevelGrid() {
 
     const module = getActiveModule();
     if (!module) {
+        return;
+    }
+
+    const modIndex = state.data.modules.findIndex((m) => m.id === module.id);
+    const isModuleLocked = !state.isPremium && modIndex >= FREE_MODULE_COUNT;
+
+    // Si el modulo entero esta bloqueado, mostrar banner en vez del camino.
+    if (isModuleLocked) {
+        const banner = document.createElement("div");
+        banner.className = "premium-banner";
+        banner.innerHTML = `
+            <div class="premium-banner-icon">🔒</div>
+            <h3 class="premium-banner-title">Contenido Premium</h3>
+            <p class="premium-banner-desc">Este módulo forma parte del curso completo.<br>Desbloquea <strong>M3 – M10</strong> (80 niveles, B1 → C2) con un pago único.</p>
+            <button type="button" class="btn btn-premium" id="unlock-from-grid">Ver opciones de acceso</button>
+        `;
+        dom.levelGrid.appendChild(banner);
+        document.getElementById("unlock-from-grid")?.addEventListener("click", showUnlockModal);
         return;
     }
 

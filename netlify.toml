@@ -9,6 +9,12 @@
   to = "/.netlify/functions/tts"
   status = 200
 
+# Validacion del codigo de desbloqueo premium.
+[[redirects]]
+  from = "/unlock"
+  to = "/.netlify/functions/unlock"
+  status = 200
+
 # El HTML siempre fresco para recibir nuevas versiones al instante
 [[headers]]
   for = "/index.html"
