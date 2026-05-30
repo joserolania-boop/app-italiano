@@ -1,0 +1,290 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maestro Italiano</title>
+    <meta name="theme-color" content="#2d7a4f">
+    <meta name="description" content="Maestro Italiano: curso interactivo de italiano A1-C2 con gamificacion, repaso espaciado, pronunciacion y progreso offline.">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./icons/icon.svg">
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css?v=20">
+</head>
+<body>
+
+<!-- Fondo animado con motivos italianos (se rellena por JS con siluetas SVG) -->
+<div id="italy-bg" class="italy-bg" aria-hidden="true"></div>
+
+<!-- Paisaje italiano a pantalla completa (carrusel de fotos con crossfade) -->
+<div id="scenery-bg" class="scenery-bg" aria-hidden="true">
+    <div class="selector-bg-layer" id="bg-layer-a"></div>
+    <div class="selector-bg-layer" id="bg-layer-b"></div>
+</div>
+
+<div id="splash-screen" class="splash">
+    <div class="splash-inner">
+        <span class="splash-flag">&#127470;&#127481;</span>
+        <h1 class="splash-title">Maestro Italiano</h1>
+        <p class="splash-sub">Cargando tu curso...</p>
+        <div class="spinner"></div>
+    </div>
+</div>
+
+<div id="app" class="app hidden">
+
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="topbar-flag">&#127470;&#127481;</span>
+            <strong class="topbar-brand">Maestro Italiano</strong>
+        </div>
+        <div class="topbar-right">
+            <span id="league-pill" class="league-pill" title="Tu liga depende del XP total">&#127793; Principiante</span>
+            <span id="xp-display" class="xp-pill" title="Puntos de experiencia totales">&#9889; 0 XP</span>
+            <button id="goal-ring-btn" class="goal-ring-btn" type="button" title="Meta diaria de XP">
+                <svg class="goal-ring" viewBox="0 0 36 36" aria-hidden="true">
+                    <circle class="goal-ring-bg" cx="18" cy="18" r="15.9155"></circle>
+                    <circle id="goal-ring-fill" class="goal-ring-fill" cx="18" cy="18" r="15.9155"></circle>
+                </svg>
+                <span id="goal-ring-label" class="goal-ring-label">0%</span>
+            </button>
+            <span id="streak-display" class="streak-pill">&#128293; 0 dias</span>
+            <button id="stats-btn" class="btn btn-ghost btn-sm" type="button" title="Estadisticas y logros">&#128202;</button>
+            <button id="sound-btn" class="btn btn-ghost btn-sm" type="button" title="Activar / silenciar sonidos">&#128266;</button>
+            <button id="theme-btn" class="btn btn-ghost btn-sm" type="button" title="Modo claro / oscuro">&#127769;</button>
+            <button id="reset-btn" class="btn btn-ghost btn-sm" type="button" title="Reiniciar progreso">&#8635;</button>
+        </div>
+    </header>
+
+    <div class="progress-wrap">
+        <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill" style="width:0%"></div>
+        </div>
+        <span id="progress-label" class="progress-label">0 / 100 niveles</span>
+    </div>
+
+    <section class="level-selector">
+        <div class="selector-header">
+            <h2>Elige tu nivel</h2>
+            <p id="selector-hint">Empieza por M1-L1 si vas desde cero.</p>
+            <button id="placement-btn" class="btn btn-outline btn-sm placement-cta" type="button">&#129504; Test de nivel &mdash; encuentra tu punto de partida</button>
+        </div>
+
+        <!-- Consulta rapida: chuletas imprescindibles de italiano -->
+        <div class="quickref-wrap">
+            <span class="quickref-label">&#128218; Repaso rapido</span>
+            <div id="quickref-bar" class="quickref-bar"></div>
+        </div>
+
+        <div class="module-tabs-wrap">
+            <div id="module-tabs" class="module-tabs"></div>
+        </div>
+        <div id="level-grid" class="level-grid"></div>
+    </section>
+
+    <section id="lesson-section" class="lesson-section hidden">
+        <div class="lesson-header">
+            <div>
+                <h2 id="lesson-title" class="lesson-title">M1-L1</h2>
+                <p id="lesson-objective" class="lesson-obj">Saludar y presentarse</p>
+            </div>
+            <div class="lesson-header-actions">
+                <button id="back-to-levels" class="btn btn-ghost btn-sm" type="button">&larr; Niveles</button>
+            </div>
+        </div>
+
+        <div class="immersive-card">
+            <span class="immersive-label">Frase del nivel &mdash; lee, escucha y repite</span>
+            <p id="immersive-text" class="immersive-text"></p>
+            <div class="immersive-actions">
+                <button id="immersive-speak" class="btn btn-outline btn-sm" type="button">&#128266; Escuchar frase</button>
+                <button id="immersive-record" class="btn btn-outline btn-sm" type="button">&#127908; Hablar y puntuar</button>
+            </div>
+            <div id="immersive-pron" class="pron-feedback hidden"></div>
+        </div>
+
+        <div class="help-row">
+            <div class="help-chip">
+                <span class="help-chip-label">Gramatica</span>
+                <span id="help-grammar" class="help-chip-value"></span>
+            </div>
+            <div class="help-chip">
+                <span class="help-chip-label">Cuidado con</span>
+                <span id="help-patch" class="help-chip-value"></span>
+            </div>
+        </div>
+
+        <section class="learning-stack">
+            <article class="learning-card pretest-card">
+                <div class="learning-card-header">
+                    <div>
+                        <span class="learning-step">Paso 1</span>
+                        <h3>Pretest rapido</h3>
+                    </div>
+                    <span class="learning-badge">Anticipacion</span>
+                </div>
+                <p id="pretest-question" class="learning-copy"></p>
+                <textarea id="pretest-input" class="exercise-input textarea compact-textarea" placeholder="Responde sin mirar. Da igual si fallas."></textarea>
+                <div class="pretest-actions">
+                    <button id="pretest-check-btn" class="btn btn-ghost btn-sm" type="button">Mostrar respuesta</button>
+                </div>
+                <div id="pretest-feedback" class="learning-feedback hidden"></div>
+            </article>
+
+            <article class="learning-card theory-card">
+                <div class="learning-card-header">
+                    <div>
+                        <span class="learning-step">Paso 2</span>
+                        <h3>Ficha teorica</h3>
+                    </div>
+                    <span class="learning-badge">Regla + guia</span>
+                </div>
+                <div class="theory-grid">
+                    <div>
+                        <span class="theory-label">Regla</span>
+                        <p id="theory-rule" class="learning-copy"></p>
+                    </div>
+                    <div>
+                        <span class="theory-label">Contraste con espanol</span>
+                        <p id="theory-contrast" class="learning-copy"></p>
+                    </div>
+                    <div>
+                        <span class="theory-label">Ejemplo correcto</span>
+                        <p id="theory-example" class="learning-copy"></p>
+                    </div>
+                    <div>
+                        <span class="theory-label">Error tipico</span>
+                        <p id="theory-mistake" class="learning-copy"></p>
+                    </div>
+                </div>
+                <div class="theory-essentials">
+                    <div class="theory-panel">
+                        <span class="theory-label">Formula util</span>
+                        <p id="theory-formula" class="learning-copy"></p>
+                    </div>
+                    <div class="theory-panel">
+                        <span class="theory-label">Usalo cuando...</span>
+                        <p id="theory-usage" class="learning-copy"></p>
+                    </div>
+                    <div class="theory-panel theory-panel-wide">
+                        <span class="theory-label">No des por sabido</span>
+                        <ul id="theory-assumptions" class="theory-list"></ul>
+                    </div>
+                    <div class="theory-panel theory-panel-wide">
+                        <span class="theory-label">Checklist antes de responder</span>
+                        <ul id="theory-checklist" class="theory-list"></ul>
+                    </div>
+                </div>
+                <details id="theory-reference-box" class="theory-reference-box hidden">
+                    <summary>Ver cuadros rapidos del nivel</summary>
+                    <p class="theory-reference-intro">Conjugaciones, articulos y patrones utiles solo cuando este nivel los necesita.</p>
+                    <div id="theory-reference-list" class="theory-reference-list"></div>
+                </details>
+            </article>
+        </section>
+
+        <div class="exercises-area">
+            <div class="exercises-header">
+                <h3>Ejercicios</h3>
+                <div class="exercises-actions">
+                    <button id="check-btn" class="btn btn-accent" type="button">&#10003; Corregir</button>
+                    <button id="retry-btn" class="btn btn-ghost" type="button">&#8635; Repetir</button>
+                </div>
+            </div>
+
+            <div id="score-bar" class="score-bar hidden">
+                <span id="score-text" class="score-text"></span>
+                <div id="score-fill-wrap" class="score-fill-wrap">
+                    <div id="score-fill" class="score-fill"></div>
+                </div>
+            </div>
+
+            <div id="exercises-list" class="exercises-list"></div>
+
+            <div id="no-exercises-msg" class="no-exercises hidden">
+                <p>Este nivel aun no tiene ejercicios interactivos.</p>
+                <p>Lee la frase de arriba, escuchala, repitela en voz alta y pasa al siguiente nivel cuando te sientas preparado.</p>
+            </div>
+        </div>
+
+        <div class="complete-row">
+            <button id="complete-btn" class="btn btn-success btn-lg" type="button">
+                &#9989; Nivel completado &mdash; siguiente
+            </button>
+            <p id="complete-hint" class="complete-hint">Haz los ejercicios y consigue al menos un 60% para desbloquear el boton.</p>
+        </div>
+
+        <details class="notes-panel">
+            <summary>&#128221; Mis notas para este nivel</summary>
+            <textarea id="notes-area" rows="4" placeholder="Apunta errores, dudas o cosas que quieras repasar..."></textarea>
+        </details>
+    </section>
+
+    <footer class="app-footer">
+        <p>Maestro Italiano &mdash; 100 niveles &middot; de A1 a C2 &middot; aprende a tu ritmo</p>
+    </footer>
+</div>
+
+<!-- Mascota: Leo, el leon de San Marco (ayudante flotante) -->
+<div id="path-mascot" class="path-mascot" role="button" tabindex="0" title="Pincha a Leo, te animara en italiano">
+    <div id="mascot-bubble" class="mascot-bubble"></div>
+    <div class="mascot-body">
+        <span class="mascot-face">&#129409;</span>
+        <span class="mascot-shadow"></span>
+    </div>
+</div>
+
+<!-- Notificaciones de logros / XP -->
+<div id="toast-stack" class="toast-stack" aria-live="polite"></div>
+
+<!-- Overlay de celebracion al completar nivel -->
+<div id="celebrate-overlay" class="celebrate-overlay hidden">
+    <div id="celebrate-card" class="celebrate-card"></div>
+</div>
+
+<!-- Modal de estadisticas y logros -->
+<div id="stats-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="stats-modal-title">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-panel">
+        <div class="modal-header">
+            <h2 id="stats-modal-title">Tu progreso</h2>
+            <button class="modal-close" type="button" data-close-modal aria-label="Cerrar">&times;</button>
+        </div>
+        <div id="stats-body" class="modal-body"></div>
+    </div>
+</div>
+
+<!-- Modal del test de nivel -->
+<div id="placement-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="placement-modal-title">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-panel">
+        <div class="modal-header">
+            <h2 id="placement-modal-title">Test de nivel</h2>
+            <button class="modal-close" type="button" data-close-modal aria-label="Cerrar">&times;</button>
+        </div>
+        <div id="placement-body" class="modal-body"></div>
+    </div>
+</div>
+
+<!-- Modal de consulta rapida (chuletas de gramatica) -->
+<div id="ref-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ref-modal-title">
+    <div class="modal-backdrop" data-close-modal></div>
+    <div class="modal-panel">
+        <div class="modal-header">
+            <h2 id="ref-modal-title">Repaso rapido</h2>
+            <button class="modal-close" type="button" data-close-modal aria-label="Cerrar">&times;</button>
+        </div>
+        <div id="ref-body" class="modal-body"></div>
+    </div>
+</div>
+
+<script src="./m1-exercises.js?v=16"></script>
+<script src="./italy-assets.js?v=1"></script>
+<script src="./quick-reference.js?v=2"></script>
+<script src="./app.js?v=25"></script>
+<script src="./enhancements.js?v=7"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "Maestro Italiano — Curso A1 a C2",
+  "short_name": "Maestro IT",
+  "description": "Curso interactivo de italiano A1-C2 con gamificacion, repaso espaciado, practica de pronunciacion y progreso offline.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf8f5",
+  "theme_color": "#2d7a4f",
+  "lang": "es",
+  "categories": ["education"],
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
