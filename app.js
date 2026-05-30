@@ -9,7 +9,7 @@ const KIND_WEIGHTS = {
 };
 const DEFAULT_PASS_PERCENTAGE = 72;
 const DEFAULT_DAILY_GOAL = 40;
-const FREE_MODULE_COUNT = 2; // M1 y M2 gratis; M3-M10 requieren premium
+const FREE_MODULE_COUNT = 10; // Todos los modulos libres — donacion voluntaria via Ko-fi
 
 // Ligas estilo apps 2026: el rango se decide por XP total acumulado.
 const LEAGUES = [
