@@ -703,6 +703,9 @@ function finishPlacementTest() {
             state.activeModuleId = mod.id;
             if (firstLevel) {
                 state.activeLevelId = firstLevel.id;
+                // Deja abierto todo lo anterior a este punto de partida, para que
+                // el bloqueo de niveles no encierre a quien empieza mas arriba.
+                state.placementLevelId = firstLevel.id;
             }
             persistState();
             renderAll();

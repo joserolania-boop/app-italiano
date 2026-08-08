@@ -40,6 +40,7 @@ const state = {
     speechByLevel: {},
     theme: "light",
     placementDone: false,
+    placementLevelId: null,
     soundOff: false,
     isPremium: false,
 };
@@ -340,6 +341,7 @@ function hydrateStateFromStorage() {
             state.speechByLevel = saved.speechByLevel || {};
             state.theme = saved.theme === "dark" ? "dark" : "light";
             state.placementDone = Boolean(saved.placementDone);
+            state.placementLevelId = saved.placementLevelId || null;
             state.soundOff = Boolean(saved.soundOff);
             state.isPremium = Boolean(saved.isPremium);
         } catch {
@@ -381,6 +383,7 @@ function persistState() {
         speechByLevel: state.speechByLevel,
         theme: state.theme,
         placementDone: state.placementDone,
+        placementLevelId: state.placementLevelId,
         soundOff: state.soundOff,
         isPremium: state.isPremium,
     };
@@ -638,6 +641,7 @@ function renderLevelGrid() {
     module.levels.forEach((level, index) => {
         const isCompleted = state.completedLevelIds.includes(level.id);
         const isActive = level.id === state.activeLevelId;
+        const bloqueado = !estaDesbloqueado(level.id);
 
         const row = document.createElement("div");
         row.className = "path-row";
@@ -645,6 +649,7 @@ function renderLevelGrid() {
         row.style.setProperty("--path-offset", offset);
 
         let stateClass = "future";
+        if (bloqueado) stateClass = "bloqueado";
         if (isCompleted) stateClass = "completed";
         if (isActive) stateClass = "active";
 
@@ -664,6 +669,13 @@ function renderLevelGrid() {
         `;
 
         node.addEventListener("click", () => {
+            if (bloqueado) {
+                leoDice("Prima questo!");
+                if (typeof showToast === "function") {
+                    showToast("🔒 Nivel bloqueado", "Termina el nivel anterior para abrir este", "goal");
+                }
+                return;
+            }
             state.activeLevelId = level.id;
             reiniciarSesion();
             persistState();
@@ -978,6 +990,27 @@ function leoDice(frase) {
     burbuja.textContent = frase;
     burbuja.classList.add("show");
     setTimeout(() => burbuja.classList.remove("show"), 2600);
+}
+
+// Un nivel se abre cuando has terminado el anterior. Antes se podia pinchar
+// M10-L10 el primer dia, asi que la progresion no significaba nada.
+// Excepcion: el test de nivel puede colocarte mas adelante, y todo lo anterior
+// a ese punto de partida queda abierto para que no te encierre.
+function estaDesbloqueado(levelId) {
+    const niveles = state.data?.levels || [];
+    const idx = niveles.findIndex((l) => l.id === levelId);
+    if (idx <= 0) {
+        return true;
+    }
+    if (state.completedLevelIds.includes(levelId)) {
+        return true;
+    }
+    if (state.completedLevelIds.includes(niveles[idx - 1].id)) {
+        return true;
+    }
+    // Punto de partida elegido con el test de nivel.
+    const inicio = niveles.findIndex((l) => l.id === state.placementLevelId);
+    return inicio >= 0 && idx <= inicio;
 }
 
 // La sesion mezcla LECCIONES obligatorias con los ejercicios, en vez de
