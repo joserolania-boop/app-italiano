@@ -660,6 +660,7 @@ function renderLevelGrid() {
 
         node.addEventListener("click", () => {
             state.activeLevelId = level.id;
+            reiniciarSesion();
             persistState();
             renderLevelGrid();
             renderLesson();
@@ -948,6 +949,87 @@ function buildReferenceCard(reference) {
     return card;
 }
 
+// ─── Sesion paso a paso (un ejercicio por pantalla) ───
+// Antes se soltaban los 5 ejercicios en una pared vertical y habia que
+// scrollear la teoria entera para llegar. Eso parecia deberes. Ahora se va de
+// uno en uno, con correccion inmediata, como en las apps de idiomas.
+let pasoActual = 0;
+let resultadoDelPaso = null;
+
+function reiniciarSesion() {
+    pasoActual = 0;
+    resultadoDelPaso = null;
+}
+
+// Leo reacciona a lo que acabas de hacer, en vez de soltar frases al azar.
+const LEO_ACIERTO = ["Bravissimo!", "Perfetto!", "Che bello!", "Continua così!", "Sei un mito!"];
+const LEO_FALLO = ["Dai, ci sei quasi!", "Niente paura!", "Piano piano...", "Riprova, amico!"];
+
+function leoDice(frase) {
+    const burbuja = document.getElementById("mascot-bubble");
+    if (!burbuja) {
+        return;
+    }
+    burbuja.textContent = frase;
+    burbuja.classList.add("show");
+    setTimeout(() => burbuja.classList.remove("show"), 2600);
+}
+
+function renderPasoSesion(level, pack) {
+    const drill = pack.drills[pasoActual];
+    const total = pack.drills.length;
+
+    const barra = document.createElement("div");
+    barra.className = "sesion-progreso";
+    for (let i = 0; i < total; i++) {
+        const tramo = document.createElement("span");
+        tramo.className = i < pasoActual ? "tramo hecho" : i === pasoActual ? "tramo activo" : "tramo";
+        barra.appendChild(tramo);
+    }
+    dom.exercisesList.appendChild(barra);
+
+    dom.exercisesList.appendChild(buildExerciseCard(level.id, drill, resultadoDelPaso));
+
+    if (resultadoDelPaso) {
+        const aviso = document.createElement("div");
+        aviso.className = `sesion-feedback ${resultadoDelPaso.status}`;
+        const titulo = resultadoDelPaso.status === "success" ? "¡Correcto!" : resultadoDelPaso.status === "partial" ? "Casi" : "No exactamente";
+        aviso.innerHTML = `<strong>${titulo}</strong><span>${resultadoDelPaso.feedback || ""}</span>`;
+        if (resultadoDelPaso.status !== "success" && resultadoDelPaso.answer) {
+            const sol = document.createElement("span");
+            sol.className = "sesion-solucion";
+            sol.textContent = `Solución: ${resultadoDelPaso.answer}`;
+            aviso.appendChild(sol);
+        }
+        dom.exercisesList.appendChild(aviso);
+    }
+
+    const accion = document.createElement("button");
+    accion.type = "button";
+    accion.className = resultadoDelPaso ? "btn btn-success btn-lg sesion-accion" : "btn btn-accent btn-lg sesion-accion";
+    accion.textContent = resultadoDelPaso
+        ? (pasoActual + 1 < total ? "Continuar" : "Ver resultado")
+        : "Comprobar";
+    accion.addEventListener("click", () => {
+        if (resultadoDelPaso) {
+            pasoActual += 1;
+            resultadoDelPaso = null;
+            if (pasoActual >= total) {
+                onCheckExercises();
+                return;
+            }
+            renderAll();
+            return;
+        }
+        const respuesta = getDrillResponse(level.id, drill.id);
+        resultadoDelPaso = evaluateDrill(level.id, drill, respuesta);
+        const frases = resultadoDelPaso.status === "success" ? LEO_ACIERTO : LEO_FALLO;
+        leoDice(frases[Math.floor(Math.random() * frases.length)]);
+        renderAll();
+    });
+    dom.exercisesList.appendChild(accion);
+}
+
 function renderExerciseArea(level) {
     const pack = getExercisePack(level.id);
     const dueReviews = getDueReviews(level.id);
@@ -968,11 +1050,27 @@ function renderExerciseArea(level) {
     }
 
     dom.noExercisesMsg.classList.add("hidden");
-    dom.checkBtn.disabled = false;
     dom.retryBtn.disabled = false;
 
     const levelExerciseState = getExerciseState(level.id);
     const lastResult = levelExerciseState.lastResult || null;
+
+    // Modo sesion: un ejercicio por pantalla mientras quedan pasos por hacer.
+    // Al terminar todos se cae al resumen de siempre (lastResult).
+    if (pasoActual < pack.drills.length) {
+        dom.checkBtn.classList.add("hidden");
+        dom.scoreBar.classList.add("hidden");
+        dom.completeBtn.disabled = true;
+        dom.completeHint.textContent = buildReviewSuffix(
+            `Ejercicio ${pasoActual + 1} de ${pack.drills.length}. Ve uno a uno, se corrige al momento.`,
+            dueReviews
+        );
+        renderPasoSesion(level, pack);
+        return;
+    }
+
+    dom.checkBtn.classList.remove("hidden");
+    dom.checkBtn.disabled = false;
 
     pack.drills.forEach((drill) => {
         const result = lastResult?.perDrill?.[drill.id] || null;
@@ -1560,6 +1658,7 @@ function onRetryExercises() {
     if (!pack || !pack.drills?.length) return;
 
     state.exerciseByLevel[level.id] = { responses: {}, lastResult: null };
+    reiniciarSesion();
     persistState();
     renderLesson();
 }

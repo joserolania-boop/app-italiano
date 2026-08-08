@@ -913,6 +913,50 @@ h1, h2, h3 {
 .exercise-type.sh { background: #fef3c7; color: #92400e; }
 .exercise-type.op { background: var(--accent-light); color: var(--accent-dark); }
 
+/* ─── Sesion paso a paso ─── */
+.sesion-progreso {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 16px;
+}
+
+.sesion-progreso .tramo {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border);
+    transition: background .25s ease;
+}
+
+.sesion-progreso .tramo.hecho { background: var(--accent); }
+.sesion-progreso .tramo.activo { background: var(--accent-light); box-shadow: inset 0 0 0 2px var(--accent); }
+
+.sesion-feedback {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    font-size: .92rem;
+    line-height: 1.45;
+}
+
+.sesion-feedback strong { font-size: 1.02rem; }
+.sesion-feedback.success { background: var(--accent-light); color: var(--accent-dark); }
+.sesion-feedback.partial { background: var(--orange-light); color: var(--orange-shadow); }
+.sesion-feedback.fail { background: var(--red-light); color: var(--red); }
+
+.sesion-solucion {
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+.sesion-accion {
+    width: 100%;
+    margin-top: 16px;
+}
+
 /* ─── Fichas tactiles (ordenar palabras) ─── */
 .tiles-answer {
     display: flex;
