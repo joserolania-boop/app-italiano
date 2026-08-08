@@ -681,6 +681,7 @@ function renderLevelGrid() {
             persistState();
             renderLevelGrid();
             renderLesson();
+            leoAlAzar(LEO_BIENVENIDA, "celebra");
             if (typeof bounceMascot === "function") bounceMascot();
             dom.lessonSection.scrollIntoView({ behavior: "smooth", block: "start" });
         });
@@ -703,7 +704,14 @@ function renderLesson() {
 
     dom.lessonTitle.textContent = level.id;
     dom.lessonObjective.textContent = level.objective || "";
-    dom.immersiveText.textContent = level.immersiveInput || "Sin texto de practica para este nivel.";
+    // La frase se LEE en la fase de leccion pero se TAPA mientras respondes: en
+    // 79 de los 98 niveles el ejercicio repetia esta misma frase, asi que estaba
+    // dando la respuesta hecha ahi arriba en grande y solo habia que copiarla.
+    // El audio sigue disponible: escuchar ayuda a aprender, leer la solucion no.
+    const frase = level.immersiveInput || "Sin texto de practica para este nivel.";
+    const tapando = enPasoDeEjercicio(level);
+    dom.immersiveText.textContent = tapando ? "🙈 Frase tapada mientras respondes. Puedes escucharla las veces que quieras." : frase;
+    dom.immersiveText.classList.toggle("immersive-tapada", tapando);
     dom.helpGrammar.textContent = simplifyGrammar(level.grammar);
     dom.helpPatch.textContent = buildPatchCoaching(level.patchPriority);
 
@@ -982,14 +990,42 @@ function reiniciarSesion() {
 const LEO_ACIERTO = ["Bravissimo!", "Perfetto!", "Che bello!", "Continua così!", "Sei un mito!"];
 const LEO_FALLO = ["Dai, ci sei quasi!", "Niente paura!", "Piano piano...", "Riprova, amico!"];
 
-function leoDice(frase) {
+// Leo habla y ADEMAS se mueve. Antes solo cambiaba el texto de un bocadillo
+// diminuto, asi que no se notaba que estuviera reaccionando a nada.
+function leoDice(frase, animacion) {
     const burbuja = document.getElementById("mascot-bubble");
-    if (!burbuja) {
-        return;
+    if (burbuja) {
+        burbuja.textContent = frase;
+        burbuja.classList.add("show");
+        clearTimeout(leoDice._t);
+        leoDice._t = setTimeout(() => burbuja.classList.remove("show"), 3800);
     }
-    burbuja.textContent = frase;
-    burbuja.classList.add("show");
-    setTimeout(() => burbuja.classList.remove("show"), 2600);
+    const cuerpo = document.querySelector(".mascot-body");
+    if (cuerpo && animacion) {
+        cuerpo.classList.remove("celebra", "anima");
+        void cuerpo.offsetWidth; // reinicia la animacion
+        cuerpo.classList.add(animacion);
+        setTimeout(() => cuerpo.classList.remove(animacion), 800);
+    }
+}
+
+// Frases por momento, para que acompane el recorrido en vez de repetir lo mismo.
+const LEO_BIENVENIDA = ["Andiamo! (¡Vamos!)", "Cominciamo! (¡Empezamos!)", "Pronto? (¿Listo?)"];
+const LEO_LECCION = ["Attento! (¡Atento!)", "Guarda bene! (¡Fíjate bien!)", "Questo è importante!"];
+const LEO_NIVEL_HECHO = ["Bravissimo! Livello finito!", "Che campione! (¡Qué campeón!)", "Ottimo lavoro! (¡Buen trabajo!)"];
+
+function leoAlAzar(lista, animacion) {
+    leoDice(lista[Math.floor(Math.random() * lista.length)], animacion);
+}
+
+// True mientras el paso actual es un EJERCICIO (no una leccion ni el resumen).
+function enPasoDeEjercicio(level) {
+    const pack = getExercisePack(level.id);
+    if (!pack || !Array.isArray(pack.drills) || !pack.drills.length) {
+        return false;
+    }
+    const pasos = construirPasos(level.id, pack);
+    return pasoActual < pasos.length && pasos[pasoActual]?.tipo === "ejercicio";
 }
 
 // Un nivel se abre cuando has terminado el anterior. Antes se podia pinchar
@@ -1027,6 +1063,7 @@ function construirPasos(levelId, pack) {
             titulo: "La regla de este nivel",
             cuerpo: teoria.rule,
             ejemplo: teoria.example || "",
+            conTabla: true, // adjunta el cuadro de conjugacion si el nivel tiene uno
         });
     }
 
@@ -1083,6 +1120,18 @@ function renderPasoSesion(level, pack) {
             oir.addEventListener("click", () => speakItalian(paso.ejemplo, level.id, "leccion"));
             tarjeta.appendChild(oir);
         }
+
+        // La tabla de conjugacion del nivel, dentro de la leccion. Una regla en
+        // prosa ("usa essere") ensena menos que ver sono/sei/è/siamo/siete/sono.
+        if (paso.conTabla) {
+            const refs = getTheoryReferences(level, getLearningGuide(level.id));
+            if (refs.length) {
+                const caja = document.createElement("div");
+                caja.className = "leccion-tabla";
+                caja.appendChild(buildReferenceCard(refs[0]));
+                tarjeta.appendChild(caja);
+            }
+        }
         dom.exercisesList.appendChild(tarjeta);
 
         const seguir = document.createElement("button");
@@ -1090,6 +1139,7 @@ function renderPasoSesion(level, pack) {
         seguir.className = "btn btn-accent btn-lg sesion-accion";
         seguir.textContent = "Entendido";
         seguir.addEventListener("click", () => {
+            leoAlAzar(LEO_LECCION, "anima");
             pasoActual += 1;
             resultadoDelPaso = null;
             if (pasoActual >= total) {
@@ -1138,8 +1188,8 @@ function renderPasoSesion(level, pack) {
         }
         const respuesta = getDrillResponse(level.id, drill.id);
         resultadoDelPaso = evaluateDrill(level.id, drill, respuesta);
-        const frases = resultadoDelPaso.status === "success" ? LEO_ACIERTO : LEO_FALLO;
-        leoDice(frases[Math.floor(Math.random() * frases.length)]);
+        const acerto = resultadoDelPaso.status === "success";
+        leoAlAzar(acerto ? LEO_ACIERTO : LEO_FALLO, acerto ? "celebra" : "anima");
         renderAll();
     });
     dom.exercisesList.appendChild(accion);
@@ -1792,6 +1842,8 @@ function onCompleteLevel() {
             return;
         }
     }
+
+    leoAlAzar(LEO_NIVEL_HECHO, "celebra");
 
     if (!state.completedLevelIds.includes(level.id)) {
         state.completedLevelIds.push(level.id);

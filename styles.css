@@ -1530,7 +1530,7 @@ h1, h2, h3 {
     position: fixed;
     bottom: 18px;
     right: 18px;
-    width: 92px;
+    width: 168px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1543,38 +1543,58 @@ h1, h2, h3 {
 .path-mascot:active .mascot-body { transform: scale(.94); }
 .mascot-body {
     position: relative;
-    font-size: 3.2rem;
+    font-size: 5.4rem;
     line-height: 1;
     animation: mascotIdle 3.4s ease-in-out infinite;
-    filter: drop-shadow(0 6px 6px rgba(20,60,40,.18));
+    filter: drop-shadow(0 8px 10px rgba(20,60,40,.24));
 }
 .mascot-face { display: inline-block; }
 .mascot-shadow {
     position: absolute;
     left: 50%;
-    bottom: -10px;
-    width: 46px;
-    height: 9px;
+    bottom: -12px;
+    width: 74px;
+    height: 13px;
     transform: translateX(-50%);
-    background: rgba(20,60,40,.16);
+    background: rgba(20,60,40,.18);
     border-radius: 50%;
-    filter: blur(1px);
+    filter: blur(2px);
     z-index: -1;
 }
 .mascot-body.hop { animation: mascotHop .6s cubic-bezier(.3,1.5,.5,1); }
+
+/* Leo celebra los aciertos y se encoge con los fallos, para que se note que
+   esta atento a lo que haces y no es un adorno. */
+.mascot-body.celebra { animation: mascotCelebra .7s cubic-bezier(.3,1.6,.4,1); }
+.mascot-body.anima { animation: mascotAnima .6s ease-in-out; }
+
+@keyframes mascotCelebra {
+    0%   { transform: scale(1) rotate(0); }
+    30%  { transform: scale(1.25) rotate(-9deg); }
+    60%  { transform: scale(1.15) rotate(8deg); }
+    100% { transform: scale(1) rotate(0); }
+}
+
+@keyframes mascotAnima {
+    0%, 100% { transform: translateX(0) scale(1); }
+    25%      { transform: translateX(-6px) scale(.95); }
+    75%      { transform: translateX(6px) scale(.95); }
+}
+
 .mascot-bubble {
     position: relative;
-    margin-bottom: 12px;
-    max-width: 130px;
+    margin-bottom: 14px;
+    max-width: 168px;
     background: var(--surface);
     color: var(--accent-dark);
     font-weight: 800;
-    font-size: .74rem;
+    font-size: .95rem;
+    line-height: 1.3;
     text-align: center;
-    padding: 6px 12px;
-    border-radius: 14px;
-    border: 2px solid var(--accent);
-    box-shadow: var(--shadow-sm);
+    padding: 11px 15px;
+    border-radius: 16px;
+    border: 3px solid var(--accent);
+    box-shadow: 0 6px 18px rgba(20,60,40,.22);
     opacity: 0;
     transform: translateY(6px) scale(.9);
     transition: opacity .2s ease, transform .25s cubic-bezier(.2,1.4,.4,1);
@@ -1798,7 +1818,7 @@ h1, h2, h3 {
 /* ─── TOASTS ─── */
 .toast-stack {
     position: fixed;
-    bottom: 20px;
+    bottom: 210px; /* por encima de Leo, antes lo tapaba entero */
     right: 20px;
     display: flex;
     flex-direction: column;
@@ -1933,3 +1953,21 @@ body.modal-open { overflow: hidden; }
     .toast-stack { left: 12px; right: 12px; max-width: none; }
 }
 
+
+
+/* ─── Frase del nivel tapada durante los ejercicios ─── */
+.immersive-text.immersive-tapada {
+    opacity: .75;
+    font-style: italic;
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+/* ─── Cuadro de conjugacion dentro de la leccion ─── */
+.leccion-tabla {
+    margin-top: 14px;
+}
+
+.leccion-tabla .reference-card {
+    margin: 0;
+}

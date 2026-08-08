@@ -121,25 +121,19 @@
 
         <details id="learning-details" class="learning-details">
             <summary class="learning-summary">
-                <span class="learning-summary-text">📖 Pretest y ficha teórica del nivel</span>
-                <span class="learning-summary-hint">Consúltala cuando quieras</span>
+                <span class="learning-summary-text">📖 Cuadros y ficha teórica del nivel</span>
+                <span class="learning-summary-hint">Consúltalos cuando quieras</span>
             </summary>
         <section class="learning-stack">
-            <article class="learning-card pretest-card">
-                <div class="learning-card-header">
-                    <div>
-                        <span class="learning-step">Paso 1</span>
-                        <h3>Pretest rapido</h3>
-                    </div>
-                    <span class="learning-badge">Anticipacion</span>
-                </div>
-                <p id="pretest-question" class="learning-copy"></p>
-                <textarea id="pretest-input" class="exercise-input textarea compact-textarea" placeholder="Responde sin mirar. Da igual si fallas."></textarea>
-                <div class="pretest-actions">
-                    <button id="pretest-check-btn" class="btn btn-ghost btn-sm" type="button">Mostrar respuesta</button>
-                </div>
-                <div id="pretest-feedback" class="learning-feedback hidden"></div>
-            </article>
+            <!-- Pretest retirado del flujo: se respondia a ciegas antes de haber
+                 aprendido nada, se podia saltar sin consecuencia y solo mostraba
+                 la respuesta. Los elementos siguen ocultos para no romper el JS. -->
+            <div class="hidden">
+                <p id="pretest-question"></p>
+                <textarea id="pretest-input"></textarea>
+                <button id="pretest-check-btn" type="button"></button>
+                <div id="pretest-feedback"></div>
+            </div>
 
             <article class="learning-card theory-card">
                 <div class="learning-card-header">
