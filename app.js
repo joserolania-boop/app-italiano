@@ -1042,6 +1042,61 @@ function estaDesbloqueado(levelId) {
     return inicio >= 0 && idx <= inicio;
 }
 
+// ─── Ejercicios de CONJUGAR y de VOCABULARIO ───
+// El temario cubre bien la gramatica, pero no habia ni un solo ejercicio de
+// conjugar un verbo ni de vocabulario (contados: 0 y 0). Se generan a partir de
+// las tablas de los cuadros de referencia, que ya traen los datos reales, y se
+// montan como cloze y choice para no anadir renderizado ni evaluacion nuevos.
+function filasUtiles(ficha) {
+    return (ficha?.entries || []).filter(
+        (f) => Array.isArray(f) && f.length >= 2 && String(f[0]).trim() && String(f[1]).trim()
+    );
+}
+
+// Conjugacion -> cloze: "io ___ · tu ___ · lui/lei ___"
+function construirDrillConjugacion(levelId, ficha) {
+    const filas = filasUtiles(ficha).filter((f) => !String(f[1]).includes("/"));
+    if (filas.length < 3) {
+        return null;
+    }
+    const elegidas = barajaEstable(filas, `${levelId}:conj`).slice(0, 3);
+    return {
+        id: "conj-1",
+        kind: "cloze",
+        label: "VB",
+        prompt: `Conjuga · ${ficha.title}`,
+        sentence: elegidas.map((f) => `${String(f[0]).trim()} ___`).join("   ·   "),
+        blanks: elegidas.map((f) => String(f[1]).trim()),
+        feedback: `Repasa el cuadro «${ficha.title}». Estas formas hay que tenerlas automatizadas.`,
+    };
+}
+
+// Vocabulario -> choice: elegir el equivalente, con distractores de la misma ficha.
+function construirDrillVocabulario(levelId, ficha) {
+    const filas = filasUtiles(ficha);
+    if (filas.length < 3) {
+        return null;
+    }
+    const mezcladas = barajaEstable(filas, `${levelId}:voc`);
+    const buena = mezcladas[0];
+    const opciones = barajaEstable(
+        [String(buena[1]).trim(), String(mezcladas[1][1]).trim(), String(mezcladas[2][1]).trim()],
+        `${levelId}:opts`
+    );
+    if (new Set(opciones).size < 3) {
+        return null; // sin distractores distintos no hay ejercicio real
+    }
+    return {
+        id: "voc-1",
+        kind: "choice",
+        label: "VOC",
+        prompt: `¿Qué corresponde a «${String(buena[0]).trim()}»?`,
+        options: opciones,
+        answer: String(buena[1]).trim(),
+        feedback: `Vocabulario del cuadro «${ficha.title}».`,
+    };
+}
+
 // La sesion mezcla LECCIONES obligatorias con los ejercicios, en vez de
 // examinar directamente. Antes la app pedia producir sin haber ensenado nada:
 // la teoria estaba en un panel aparte que se podia saltar entero.
@@ -1058,6 +1113,23 @@ function construirPasos(levelId, pack) {
             ejemplo: teoria.example || "",
             conTabla: true, // adjunta el cuadro de conjugacion si el nivel tiene uno
         });
+    }
+
+    // Justo tras la leccion, practica lo que la tabla acaba de ensenar.
+    const nivel = (state.data?.levels || []).find((l) => l.id === levelId);
+    const fichas = nivel ? getTheoryReferences(nivel, getLearningGuide(levelId)) : [];
+    // El banco marca cada ficha con su tipo: las de "Conjugacion" dan ejercicio
+    // de verbos; las de "Lista" (expresiones, numeros...) dan el de vocabulario.
+    const fichaVerbos = fichas.find((f) => f.type === "Conjugacion");
+    const fichaVocab = fichas.find((f) => f.type === "Lista" || f.type === "Articulos");
+
+    if (fichaVerbos) {
+        const d = construirDrillConjugacion(levelId, fichaVerbos);
+        if (d) pasos.push({ tipo: "ejercicio", drill: d });
+    }
+    if (fichaVocab) {
+        const d = construirDrillVocabulario(levelId, fichaVocab);
+        if (d) pasos.push({ tipo: "ejercicio", drill: d });
     }
 
     drills.forEach((drill, i) => {
@@ -1522,6 +1594,7 @@ function typeToClass(kind) {
     if (kind === "choice") return "mp";
     if (kind === "shadowing") return "sh";
     if (kind === "tiles") return "op";
+    if (kind === "conjugation") return "vb";
     return "ti";
 }
 
