@@ -6,6 +6,7 @@ const KIND_WEIGHTS = {
     choice: 0.12,
     conversation: 0.22,
     shadowing: 0.10,
+    tiles: 0.10, // calentamiento de reconocimiento: cuenta poco, no es produccion
 };
 const DEFAULT_PASS_PERCENTAGE = 72;
 const DEFAULT_DAILY_GOAL = 40;
@@ -1028,6 +1029,63 @@ function buildExerciseCard(levelId, drill, result) {
         wrapper.appendChild(textarea);
     }
 
+    if (drill.kind === "tiles") {
+        // La respuesta guardada son INDICES de drill.words, no palabras: asi las
+        // palabras repetidas ("e", "la") funcionan bien como fichas separadas.
+        const elegidas = Array.isArray(response) ? [...response] : [];
+
+        const zonaRespuesta = document.createElement("div");
+        zonaRespuesta.className = "tiles-answer";
+
+        const banco = document.createElement("div");
+        banco.className = "tiles-bank";
+
+        const pintar = () => {
+            zonaRespuesta.innerHTML = "";
+            banco.innerHTML = "";
+
+            if (!elegidas.length) {
+                const pista = document.createElement("span");
+                pista.className = "tiles-placeholder";
+                pista.textContent = "Toca las palabras en orden...";
+                zonaRespuesta.appendChild(pista);
+            }
+
+            elegidas.forEach((indice, posicion) => {
+                const ficha = document.createElement("button");
+                ficha.type = "button";
+                ficha.className = "tile tile-selected";
+                ficha.textContent = (drill.words || [])[indice] || "";
+                ficha.addEventListener("click", () => {
+                    elegidas.splice(posicion, 1);
+                    saveDrillResponse(levelId, drill.id, [...elegidas]);
+                    pintar();
+                });
+                zonaRespuesta.appendChild(ficha);
+            });
+
+            (drill.words || []).forEach((palabra, indice) => {
+                if (elegidas.includes(indice)) {
+                    return;
+                }
+                const ficha = document.createElement("button");
+                ficha.type = "button";
+                ficha.className = "tile";
+                ficha.textContent = palabra;
+                ficha.addEventListener("click", () => {
+                    elegidas.push(indice);
+                    saveDrillResponse(levelId, drill.id, [...elegidas]);
+                    pintar();
+                });
+                banco.appendChild(ficha);
+            });
+        };
+
+        pintar();
+        wrapper.appendChild(zonaRespuesta);
+        wrapper.appendChild(banco);
+    }
+
     if (drill.kind === "cloze") {
         const sentence = document.createElement("p");
         sentence.className = "exercise-sentence";
@@ -1206,6 +1264,7 @@ function typeToClass(kind) {
     if (kind === "conversation") return "cr";
     if (kind === "choice") return "mp";
     if (kind === "shadowing") return "sh";
+    if (kind === "tiles") return "op";
     return "ti";
 }
 
@@ -1320,14 +1379,95 @@ function getNextLevel(currentLevelId) {
     return state.data.levels[idx + 1] || null;
 }
 
+// ─── Fichas tactiles (ordenar palabras) ───
+// Fase de RECONOCIMIENTO antes de la de produccion. Se generan solas a partir
+// de las respuestas correctas que ya existen en el banco, asi que no hay que
+// escribir contenido nuevo. Solo en los modulos bajos: a partir de M5 (B1) se
+// espera que el alumno ya produzca sin apoyo.
+const TILES_HASTA_MODULO = 4;
+const TILES_DISTRACTORES = ["molto", "sempre", "anche", "poi", "quando", "però", "così", "bene"];
+
+function numeroDeModulo(levelId) {
+    const m = /^M(\d+)/.exec(String(levelId || ""));
+    return m ? Number(m[1]) : 99;
+}
+
+// Trocea en palabras conservando los acentos (normalizeText los borraria).
+function palabrasDeFrase(frase) {
+    return String(frase || "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}' ]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(" ")
+        .filter(Boolean);
+}
+
+// Baraja estable: la misma frase da siempre el mismo orden, para que las fichas
+// no salten de sitio cada vez que se repinta la pantalla.
+function barajaEstable(items, semilla) {
+    let h = 0;
+    for (const ch of String(semilla)) {
+        h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    }
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+        h = (h * 1103515245 + 12345) >>> 0;
+        const j = h % (i + 1);
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+}
+
+function construirDrillTiles(levelId, drillTraduccion) {
+    const objetivo = (drillTraduccion.accepted || [])[0];
+    const palabras = palabrasDeFrase(objetivo);
+    if (palabras.length < 3 || palabras.length > 12) {
+        return null;
+    }
+
+    const distractores = TILES_DISTRACTORES
+        .filter((w) => !palabras.includes(w.toLowerCase()))
+        .slice(0, palabras.length > 6 ? 3 : 2);
+
+    const fuente = String(drillTraduccion.prompt || "").replace(/^Traduce al italiano:\s*/i, "").trim();
+
+    return {
+        id: `${drillTraduccion.id}-tiles`,
+        kind: "tiles",
+        label: "OP",
+        prompt: fuente ? `Ordena las palabras: ${fuente}` : "Ordena las palabras para formar la frase.",
+        accepted: drillTraduccion.accepted || [],
+        words: barajaEstable([...palabras, ...distractores], `${levelId}:${drillTraduccion.id}`),
+        feedback: "Toca las fichas en orden. Vuelve a tocar una ficha colocada para quitarla.",
+    };
+}
+
+function conFichasTactiles(levelId, pack) {
+    if (!pack || !Array.isArray(pack.drills) || numeroDeModulo(levelId) > TILES_HASTA_MODULO) {
+        return pack;
+    }
+    const drills = [];
+    pack.drills.forEach((drill) => {
+        if (drill.kind === "translation") {
+            const tiles = construirDrillTiles(levelId, drill);
+            if (tiles) {
+                drills.push(tiles);
+            }
+        }
+        drills.push(drill);
+    });
+    return { ...pack, drills };
+}
+
 function getExercisePack(levelId) {
     if (typeof EXERCISE_BANK !== "undefined") {
-        return EXERCISE_BANK[levelId] || null;
+        return conFichasTactiles(levelId, EXERCISE_BANK[levelId] || null);
     }
     if (typeof M1_EXERCISE_BANK === "undefined") {
         return null;
     }
-    return M1_EXERCISE_BANK[levelId] || null;
+    return conFichasTactiles(levelId, M1_EXERCISE_BANK[levelId] || null);
 }
 
 function getLearningGuide(levelId) {
@@ -1651,6 +1791,9 @@ function evaluateDrill(levelId, drill, response) {
     }
     if (drill.kind === "conversation") {
         return evaluateConversation(levelId, response, drill.expectedTokens || [], drill.minWords || 4, drill.feedback || "", drill.expectedStructures || []);
+    }
+    if (drill.kind === "tiles") {
+        return evaluateTiles(response, drill.words || [], drill.accepted || [], drill.feedback || "");
     }
     if (drill.kind === "cloze") {
         return evaluateCloze(response, drill.blanks || [], drill.feedback || "");
@@ -2112,6 +2255,47 @@ function hasLinkedProduction(rawResponse, normalized) {
 function getModuleNumber(levelId) {
     const match = String(levelId || "").match(/^M(\d+)-L\d+$/);
     return Number(match?.[1] || 0);
+}
+
+function evaluateTiles(response, words, accepted, feedback) {
+    const indices = Array.isArray(response) ? response : [];
+    const frase = indices.map((i) => words[i]).filter(Boolean).join(" ");
+    const normalizada = normalizeText(frase);
+    const solucion = accepted[0] || "";
+
+    if (!normalizada) {
+        return {
+            score: 0,
+            status: "fail",
+            label: "Sin responder",
+            feedback: "Toca las fichas para formar la frase.",
+            answer: solucion,
+        };
+    }
+
+    if (accepted.some((item) => normalizeText(item) === normalizada)) {
+        return {
+            score: 1,
+            status: "success",
+            label: "Correcto",
+            feedback: "Perfecto, orden correcto.",
+            answer: solucion,
+        };
+    }
+
+    // Puntuacion parcial: cuantas palabras estan en su sitio exacto.
+    const puestas = normalizada.split(" ");
+    const buenas = normalizeText(solucion).split(" ");
+    const aciertos = puestas.filter((p, i) => p === buenas[i]).length;
+    const ratio = buenas.length ? aciertos / buenas.length : 0;
+
+    return {
+        score: ratio >= 0.6 ? ratio : 0,
+        status: ratio >= 0.6 ? "partial" : "fail",
+        label: ratio >= 0.6 ? "Casi" : "Revisa",
+        feedback,
+        answer: solucion,
+    };
 }
 
 function evaluateCloze(response, blanks, feedback) {
