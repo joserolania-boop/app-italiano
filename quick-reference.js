@@ -238,7 +238,7 @@ const QUICK_REFERENCE = [
                 table: [
                     ["-co/-go", "amico → amici, lago → laghi"],
                     ["-ca/-ga", "amica → amiche, riga → righe"],
-                    ["-cia/-gia", "arancia → arance"],
+                    ["-cia/-già", "arancia → arance"],
                     ["invariables", "città, caffè, film, sport"]
                 ]
             }

@@ -354,7 +354,7 @@ function hydrateStateFromStorage() {
         state.activeLevelId = firstLevel?.id || null;
     }
 
-    updateStreakForToday();
+    refreshStreakOnLoad();
     persistState();
 }
 
@@ -381,34 +381,46 @@ function persistState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
 }
 
-function updateStreakForToday() {
-    const now = new Date();
-    const todayKey = dateKey(now);
+function daysBetween(fromKey, toKey) {
+    return Math.round((new Date(`${toKey}T00:00:00`) - new Date(`${fromKey}T00:00:00`)) / STREAK_DAY_MS);
+}
 
+// Al abrir la app SOLO se comprueba si la racha se ha roto. Nunca se incrementa:
+// abrir la app no es estudiar. La racha sube en registerStudyToday(), que se
+// dispara al ganar XP (es decir, al practicar de verdad).
+function refreshStreakOnLoad() {
     if (!state.lastStudyDate) {
-        state.lastStudyDate = todayKey;
-        state.streakDays = Math.max(1, state.streakDays || 0);
+        state.streakDays = 0;
         return;
     }
-
+    const todayKey = dateKey(new Date());
     if (state.lastStudyDate === todayKey) {
         return;
     }
-
-    const last = new Date(state.lastStudyDate + "T00:00:00");
-    const diffDays = Math.round((new Date(todayKey + "T00:00:00") - last) / STREAK_DAY_MS);
-
-    if (diffDays === 1) {
-        state.streakDays = Math.max(1, state.streakDays + 1);
-    } else {
-        state.streakDays = 1;
+    if (daysBetween(state.lastStudyDate, todayKey) > 1) {
+        state.streakDays = 0;
     }
-
-    state.lastStudyDate = todayKey;
 }
 
+// Se llama cuando el usuario practica de verdad.
+function registerStudyToday() {
+    const todayKey = dateKey(new Date());
+    if (state.lastStudyDate === todayKey) {
+        return false;
+    }
+    const continua = state.lastStudyDate && daysBetween(state.lastStudyDate, todayKey) === 1;
+    state.streakDays = continua ? (state.streakDays || 0) + 1 : 1;
+    state.lastStudyDate = todayKey;
+    return true;
+}
+
+// Fecha LOCAL, no UTC: con toISOString() estudiar de noche contaba como el dia
+// anterior en cualquier huso al este de Greenwich y rompia la racha sin motivo.
 function dateKey(dateObj) {
-    return dateObj.toISOString().slice(0, 10);
+    const anio = dateObj.getFullYear();
+    const mes = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const dia = String(dateObj.getDate()).padStart(2, "0");
+    return `${anio}-${mes}-${dia}`;
 }
 
 function renderAll() {
@@ -488,8 +500,15 @@ function awardXp(amount, reason) {
     state.xp += gain;
     state.xpByDate[today] = Number(state.xpByDate[today] || 0) + gain;
 
+    // Practicar de verdad es lo que mantiene viva la racha, no abrir la app.
+    const rachaSubio = registerStudyToday();
+
     persistState();
     renderTopBar();
+
+    if (rachaSubio && typeof showToast === "function") {
+        showToast(`🔥 Racha de ${state.streakDays} día${state.streakDays === 1 ? "" : "s"}`, "Sigue mañana para no perderla", "goal");
+    }
 
     if (typeof showToast === "function") {
         showToast(`+${gain} XP`, reason || "", "xp");
@@ -855,8 +874,8 @@ function inferTheoryReferenceKeys(level, guide) {
         { key: "modali-base", terms: ["dovere", "potere", "volere", "modale"] },
         { key: "passato-prossimo-avere", terms: ["passato prossimo con avere", "participio regolare"] },
         { key: "passato-prossimo-essere", terms: ["passato prossimo con essere", "movimiento frecuentes usan essere", "concordancia del participio"] },
-        { key: "ce-ci-sono", terms: ["c'e", "ci sono", "existencia"] },
-        { key: "comparativi-superlativi", terms: ["comparativi", "superlativo", "piu", "meno"] },
+        { key: "ce-ci-sono", terms: ["c'è", "ci sono", "existencia"] },
+        { key: "comparativi-superlativi", terms: ["comparativi", "superlativo", "più", "meno"] },
         { key: "clitici-diretti", terms: ["lo/la/li/le", "pronombres directos", "cliticos directos"] },
         { key: "clitici-indiretti", terms: ["gli/le", "indirectos", "destinatario"] },
         { key: "ci-ne", terms: ["ci/ne", "ci suele", "ne puede"] },
@@ -2061,7 +2080,7 @@ function hasLinkedProduction(rawResponse, normalized) {
     }
     const linkingMarkers = [
         "che",
-        "perche",
+        "perché",
         "quindi",
         "se",
         "quando",
@@ -2072,15 +2091,15 @@ function hasLinkedProduction(rawResponse, normalized) {
         "ciononostante",
         "pur",
         "sebbene",
-        "benche",
+        "benché",
         "inoltre",
         "infine",
         "in primo luogo",
         "in secondo luogo",
         "in breve",
         "ovvero",
-        "cioe",
-        "in realta",
+        "cioè",
+        "in realtà",
         "secondo me",
         "penso che",
         "spero che",
