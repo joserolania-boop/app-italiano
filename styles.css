@@ -1624,10 +1624,23 @@ h1, h2, h3 {
     .path-mascot {
         bottom: 14px;
         right: 12px;
-        width: 64px;
+        width: 72px;
     }
-    .mascot-body { font-size: 2.4rem; }
-    .mascot-bubble { font-size: .66rem; max-width: 100px; }
+    .mascot-body { font-size: 3rem; }
+    /* El bocadillo se ancla a la derecha y CRECE HACIA LA IZQUIERDA. Antes media
+       mas que el propio Leo (100px contra 64px) y se salia de la pantalla. */
+    .mascot-bubble {
+        position: absolute;
+        right: 0;
+        bottom: 100%;
+        margin-bottom: 8px;
+        width: max-content;
+        max-width: min(230px, calc(100vw - 36px));
+        font-size: .82rem;
+        padding: 9px 13px;
+        border-width: 2px;
+    }
+    .mascot-bubble::after { left: auto; right: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .mascot-body { animation: none; }
