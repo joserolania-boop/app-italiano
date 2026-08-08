@@ -311,7 +311,12 @@ function sliceBetween(text, startMarker, endMarker) {
 
 function safeCell(row, key) {
     const value = row?.[key];
-    return value ? String(value).trim() : "";
+    if (!value) {
+        return "";
+    }
+    // Las celdas del roadmap vienen en markdown envueltas en comillas invertidas
+    // (`texto`). Sin quitarlas se mostraban literalmente en la frase del nivel.
+    return String(value).trim().replace(/^`+|`+$/g, "").trim();
 }
 
 function hydrateStateFromStorage() {

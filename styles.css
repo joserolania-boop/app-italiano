@@ -913,6 +913,58 @@ h1, h2, h3 {
 .exercise-type.sh { background: #fef3c7; color: #92400e; }
 .exercise-type.op { background: var(--accent-light); color: var(--accent-dark); }
 
+/* ─── Teoria plegable ─── */
+/* Sigue siempre disponible, pero fuera del camino: antes habia que scrollear
+   la teoria entera cada vez para llegar a los ejercicios. */
+.learning-details {
+    margin-bottom: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.learning-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 20px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    transition: background .15s ease;
+}
+
+.learning-summary::-webkit-details-marker { display: none; }
+.learning-summary:hover { background: var(--border-light); }
+
+.learning-summary-text {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.learning-summary-hint {
+    font-size: .82rem;
+    color: var(--text-muted);
+}
+
+.learning-summary::after {
+    content: "+";
+    font-size: 1.3rem;
+    line-height: 1;
+    color: var(--accent);
+    transition: transform .2s ease;
+}
+
+.learning-details[open] .learning-summary::after {
+    transform: rotate(45deg);
+}
+
+.learning-details .learning-stack {
+    padding: 0 16px 16px;
+}
+
 /* ─── Sesion paso a paso ─── */
 .sesion-progreso {
     display: flex;
