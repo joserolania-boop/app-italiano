@@ -980,19 +980,96 @@ function leoDice(frase) {
     setTimeout(() => burbuja.classList.remove("show"), 2600);
 }
 
+// La sesion mezcla LECCIONES obligatorias con los ejercicios, en vez de
+// examinar directamente. Antes la app pedia producir sin haber ensenado nada:
+// la teoria estaba en un panel aparte que se podia saltar entero.
+function construirPasos(levelId, pack) {
+    const teoria = getLearningGuide(levelId)?.theory || {};
+    const drills = Array.isArray(pack?.drills) ? pack.drills : [];
+    const pasos = [];
+
+    if (teoria.rule) {
+        pasos.push({
+            tipo: "leccion",
+            titulo: "La regla de este nivel",
+            cuerpo: teoria.rule,
+            ejemplo: teoria.example || "",
+        });
+    }
+
+    drills.forEach((drill, i) => {
+        pasos.push({ tipo: "ejercicio", drill });
+        // A mitad de camino, recordatorio del fallo tipico antes de seguir.
+        if (i === 1 && teoria.mistake) {
+            pasos.push({
+                tipo: "leccion",
+                titulo: "Ojo con este error",
+                cuerpo: teoria.mistake,
+                ejemplo: teoria.contrast || "",
+            });
+        }
+    });
+
+    return pasos;
+}
+
 function renderPasoSesion(level, pack) {
-    const drill = pack.drills[pasoActual];
-    const total = pack.drills.length;
+    const pasos = construirPasos(level.id, pack);
+    const paso = pasos[pasoActual];
+    const total = pasos.length;
 
     const barra = document.createElement("div");
     barra.className = "sesion-progreso";
-    for (let i = 0; i < total; i++) {
+    pasos.forEach((p, i) => {
         const tramo = document.createElement("span");
-        tramo.className = i < pasoActual ? "tramo hecho" : i === pasoActual ? "tramo activo" : "tramo";
+        const estado = i < pasoActual ? "hecho" : i === pasoActual ? "activo" : "";
+        tramo.className = `tramo ${estado} ${p.tipo === "leccion" ? "leccion" : ""}`.trim();
         barra.appendChild(tramo);
-    }
+    });
     dom.exercisesList.appendChild(barra);
 
+    // Paso de LECCION: se lee y se sigue, no se evalua, pero no se puede saltar.
+    if (paso.tipo === "leccion") {
+        const tarjeta = document.createElement("article");
+        tarjeta.className = "leccion-card";
+        tarjeta.innerHTML = `
+            <span class="leccion-badge">Lección</span>
+            <h4 class="leccion-titulo">${paso.titulo}</h4>
+            <p class="leccion-cuerpo">${paso.cuerpo}</p>
+        `;
+        if (paso.ejemplo) {
+            const ej = document.createElement("p");
+            ej.className = "leccion-ejemplo";
+            ej.textContent = paso.ejemplo;
+            tarjeta.appendChild(ej);
+
+            const oir = document.createElement("button");
+            oir.type = "button";
+            oir.className = "btn btn-outline btn-sm";
+            oir.textContent = "🔊 Escuchar";
+            oir.addEventListener("click", () => speakItalian(paso.ejemplo, level.id, "leccion"));
+            tarjeta.appendChild(oir);
+        }
+        dom.exercisesList.appendChild(tarjeta);
+
+        const seguir = document.createElement("button");
+        seguir.type = "button";
+        seguir.className = "btn btn-accent btn-lg sesion-accion";
+        seguir.textContent = "Entendido";
+        seguir.addEventListener("click", () => {
+            pasoActual += 1;
+            resultadoDelPaso = null;
+            if (pasoActual >= total) {
+                onCheckExercises();
+                return;
+            }
+            renderAll();
+        });
+        dom.exercisesList.appendChild(seguir);
+        return;
+    }
+
+    const drill = paso.drill;
     dom.exercisesList.appendChild(buildExerciseCard(level.id, drill, resultadoDelPaso));
 
     if (resultadoDelPaso) {
@@ -1062,12 +1139,13 @@ function renderExerciseArea(level) {
 
     // Modo sesion: un ejercicio por pantalla mientras quedan pasos por hacer.
     // Al terminar todos se cae al resumen de siempre (lastResult).
-    if (pasoActual < pack.drills.length) {
+    const totalPasos = construirPasos(level.id, pack).length;
+    if (pasoActual < totalPasos) {
         dom.checkBtn.classList.add("hidden");
         dom.scoreBar.classList.add("hidden");
         dom.completeBtn.disabled = true;
         dom.completeHint.textContent = buildReviewSuffix(
-            `Ejercicio ${pasoActual + 1} de ${pack.drills.length}. Ve uno a uno, se corrige al momento.`,
+            `Paso ${pasoActual + 1} de ${totalPasos}. Lecciones y ejercicios, uno a uno.`,
             dueReviews
         );
         renderPasoSesion(level, pack);
