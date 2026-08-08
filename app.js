@@ -2838,6 +2838,8 @@ function speakWithNeuralVoice(text, onDone) {
 }
 
 // ─── Voz local del sistema (respaldo offline) ───
+let avisoSinVozItaliana = false;
+
 function speakWithLocalVoice(text, onDone) {
     if (!("speechSynthesis" in window)) {
         return;
@@ -2845,15 +2847,31 @@ function speakWithLocalVoice(text, onDone) {
 
     window.speechSynthesis.cancel();
 
+    const italianVoice = pickItalianVoice();
+
+    // Sin voz italiana instalada, el navegador usaba la voz por defecto del
+    // sistema (en español o inglés) para leer italiano, y sonaba fatal. Es mejor
+    // avisar una vez y no reproducir nada que ensenar una pronunciacion falsa.
+    if (!italianVoice) {
+        if (!avisoSinVozItaliana) {
+            avisoSinVozItaliana = true;
+            if (typeof showToast === "function") {
+                showToast(
+                    "🔇 No hay voz italiana instalada",
+                    "Windows: Configuración › Hora e idioma › Voz › Agregar voces › Italiano",
+                    "goal"
+                );
+            }
+        }
+        onDone && onDone();
+        return;
+    }
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "it-IT";
     utterance.rate = 0.95;
     utterance.pitch = 1.05;
-
-    const italianVoice = pickItalianVoice();
-    if (italianVoice) {
-        utterance.voice = italianVoice;
-    }
+    utterance.voice = italianVoice;
 
     utterance.onend = () => {
         onDone && onDone();
