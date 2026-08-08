@@ -704,14 +704,11 @@ function renderLesson() {
 
     dom.lessonTitle.textContent = level.id;
     dom.lessonObjective.textContent = level.objective || "";
-    // La frase se LEE en la fase de leccion pero se TAPA mientras respondes: en
-    // 79 de los 98 niveles el ejercicio repetia esta misma frase, asi que estaba
-    // dando la respuesta hecha ahi arriba en grande y solo habia que copiarla.
-    // El audio sigue disponible: escuchar ayuda a aprender, leer la solucion no.
-    const frase = level.immersiveInput || "Sin texto de practica para este nivel.";
-    const tapando = enPasoDeEjercicio(level);
-    dom.immersiveText.textContent = tapando ? "🙈 Frase tapada mientras respondes. Puedes escucharla las veces que quieras." : frase;
-    dom.immersiveText.classList.toggle("immersive-tapada", tapando);
+    // La frase del nivel usa el EJEMPLO de la teoria, no el input inmersivo: son
+    // frases distintas con la misma gramatica. El input inmersivo se reutilizaba
+    // tal cual en los ejercicios (71% de solape medio, 71 niveles por encima del
+    // 60%), asi que daba la respuesta hecha. Con el ejemplo baja al 25%.
+    dom.immersiveText.textContent = fraseDelNivel(level);
     dom.helpGrammar.textContent = simplifyGrammar(level.grammar);
     dom.helpPatch.textContent = buildPatchCoaching(level.patchPriority);
 
@@ -1018,14 +1015,10 @@ function leoAlAzar(lista, animacion) {
     leoDice(lista[Math.floor(Math.random() * lista.length)], animacion);
 }
 
-// True mientras el paso actual es un EJERCICIO (no una leccion ni el resumen).
-function enPasoDeEjercicio(level) {
-    const pack = getExercisePack(level.id);
-    if (!pack || !Array.isArray(pack.drills) || !pack.drills.length) {
-        return false;
-    }
-    const pasos = construirPasos(level.id, pack);
-    return pasoActual < pasos.length && pasos[pasoActual]?.tipo === "ejercicio";
+// Frase que se muestra y se escucha en la cabecera del nivel.
+function fraseDelNivel(level) {
+    const ejemplo = getLearningGuide(level.id)?.theory?.example;
+    return ejemplo || level.immersiveInput || "Sin texto de practica para este nivel.";
 }
 
 // Un nivel se abre cuando has terminado el anterior. Antes se podia pinchar
@@ -1881,7 +1874,7 @@ function onBackToLevels() {
 function onSpeakImmersive() {
     const level = getActiveLevel();
     if (!level) return;
-    speakItalian(level.immersiveInput || "");
+    speakItalian(fraseDelNivel(level));
 }
 
 function onNotesInput() {
