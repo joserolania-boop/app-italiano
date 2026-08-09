@@ -1626,29 +1626,84 @@ function typeToClass(kind) {
 
 function simplifyGrammar(rawXml) {
     const attributes = extractXmlAttributes(rawXml);
-    const focus = cleanGrammarText(attributes.foco || "");
-    const transfer = cleanGrammarText(attributes.transferencia || "");
+    const focus = limpiarJerga(cleanGrammarText(attributes.foco || ""));
+    const transfer = limpiarJerga(cleanGrammarText(attributes.transferencia || ""));
 
     if (!focus && !transfer) {
         return "Repasa la estructura principal de este nivel.";
     }
 
+    // Nada de jerga: "Hoy fijas" y "paradigma" no le dicen nada a quien aprende.
     const parts = [];
     if (focus) {
-        parts.push(`Hoy fijas: ${focus}.`);
+        parts.push(`Hoy practicas: ${focus}.`);
     }
-    if (transfer) {
-        parts.push(`Evita: ${transfer}.`);
+    const aviso = frasearAviso(transfer);
+    if (aviso) {
+        parts.push(aviso);
     }
     return parts.join(" ");
 }
 
-function buildPatchCoaching(patchPriority) {
-    const text = String(patchPriority || "").trim();
-    if (!text) {
-        return "Corrige primero el error que más se repite antes de avanzar.";
+// Los avisos del temario vienen de tres formas distintas ("no omitir X",
+// "evitar X", "fijar X"), y meterlos todos en la misma plantilla producia
+// frases sin sentido o con el significado invertido.
+function frasearAviso(texto) {
+    const t = String(texto || "").trim();
+    if (!t) {
+        return "";
     }
-    return `Tu error clave aqui es: ${text}. Corrigelo antes de intentar ir mas rapido.`;
+    if (/^no\s/i.test(t)) {
+        return `Ojo: ${t}.`;
+    }
+    if (/^evitar\s/i.test(t)) {
+        return `Evita ${t.replace(/^evitar\s/i, "")}.`;
+    }
+    if (/^(fijar|automatizar|cerrar|practicar|memorizar|consolidar)\s/i.test(t)) {
+        return `Céntrate en ${t.replace(/^\S+\s/, "")}.`;
+    }
+    return `Fíjate en esto: ${t}.`;
+}
+
+function buildPatchCoaching(patchPriority) {
+    const text = limpiarJerga(String(patchPriority || "").trim());
+    if (!text) {
+        return "Fíjate en el fallo que más te repitas y corrígelo antes de seguir.";
+    }
+    // Antes decia "Tu error clave aqui es: articulos basicos. Corrigelo", que no
+    // significa nada: los articulos son el TEMA, no un error.
+    return `Aquí se falla sobre todo en esto: ${text}. Míralo con calma antes de avanzar.`;
+}
+
+// Sustituye la jerga linguistica por palabras que entienda cualquiera.
+const JERGA = [
+    // Primero las expresiones enteras, si no salen frases rotas como
+    // "densidad el vocabulario" al sustituir palabra por palabra.
+    [/\bdensidad l[eé]xica\b/gi, "cantidad de palabras distintas"],
+    [/\bprecisi[oó]n l[eé]xica[l]?\b/gi, "elegir la palabra exacta"],
+    [/\briqueza l[eé]xica\b/gi, "variedad de vocabulario"],
+    [/\bcarga l[eé]xica\b/gi, "cantidad de vocabulario"],
+    [/\bl[eé]xic[oa][l]?\b/gi, "de vocabulario"],
+    [/\bparadigma\b/gi, "la tabla del verbo"],
+    [/\bmorfolog[ií]a\b/gi, "la forma de las palabras"],
+    [/\bconcordancia\b/gi, "que concuerden género y número"],
+    [/\bcl[ií]ticos?\b/gi, "los pronombres átonos (lo, la, ne, ci)"],
+    [/\bdesinencias?\b/gi, "las terminaciones"],
+    [/\bflexi[oó]n\b/gi, "los cambios de terminación"],
+    [/\bsintagma\b/gi, "el grupo de palabras"],
+    [/\bnominalizaci[oó]n\b/gi, "convertir verbos en sustantivos"],
+    [/\bhedging\b/gi, "suavizar lo que afirmas"],
+    [/\btransferencia\b/gi, "calcar del español"],
+    [/\bmarcadores? discursivos?\b/gi, "los conectores"],
+    [/\bimplicatura\b/gi, "lo que se da a entender sin decirlo"],
+];
+
+function limpiarJerga(texto) {
+    let salida = String(texto || "");
+    JERGA.forEach(([patron, claro]) => {
+        salida = salida.replace(patron, claro);
+    });
+    return salida;
 }
 
 function extractXmlAttributes(rawXml) {
@@ -1661,8 +1716,10 @@ function extractXmlAttributes(rawXml) {
 }
 
 function cleanGrammarText(text) {
+    // Antes borraba la palabra "no", lo que INVERTIA el significado del aviso:
+    // "no omitir sujeto" se mostraba como "omitir sujeto". Ahora se conserva y
+    // es frasearAviso() quien redacta la frase segun como venga el dato.
     return String(text || "")
-        .replace(/\bno\b\s*/i, "")
         .replace(/\s+/g, " ")
         .trim();
 }
