@@ -31,6 +31,8 @@ const state = {
     notesByLevel: {},
     exerciseByLevel: {},
     reviewByLevel: {},
+    palabras: {},      // que palabras dominas
+    colaFallos: [],    // lo que fallaste y debe volver
     streakDays: 0,
     lastStudyDate: null,
     xp: 0,
@@ -332,6 +334,8 @@ function hydrateStateFromStorage() {
             state.notesByLevel = saved.notesByLevel || {};
             state.exerciseByLevel = saved.exerciseByLevel || {};
             state.reviewByLevel = saved.reviewByLevel || {};
+            state.palabras = saved.palabras || {};
+            state.colaFallos = Array.isArray(saved.colaFallos) ? saved.colaFallos : [];
             state.streakDays = Number(saved.streakDays || 0);
             state.lastStudyDate = saved.lastStudyDate || null;
             state.xp = Number(saved.xp || 0);
@@ -374,6 +378,8 @@ function persistState() {
         notesByLevel: state.notesByLevel,
         exerciseByLevel: state.exerciseByLevel,
         reviewByLevel: state.reviewByLevel,
+        palabras: state.palabras,
+        colaFallos: state.colaFallos,
         streakDays: state.streakDays,
         lastStudyDate: state.lastStudyDate,
         xp: state.xp,
@@ -441,7 +447,8 @@ function renderAll() {
 }
 
 function renderTopBar() {
-    dom.streakDisplay.textContent = `🔥 ${state.streakDays} dia${state.streakDays === 1 ? "" : "s"}`;
+    dom.streakDisplay.textContent = `🔥 ${state.streakDays} día${state.streakDays === 1 ? "" : "s"}`;
+    pintarContadorPalabras();
 
     if (dom.xpDisplay) {
         dom.xpDisplay.textContent = `⚡ ${state.xp} XP`;
@@ -1133,6 +1140,11 @@ function construirPasos(levelId, pack) {
     const drills = Array.isArray(pack?.drills) ? pack.drills : [];
     const pasos = [];
 
+    // Lo que fallaste en sesiones anteriores vuelve, antes de lo nuevo.
+    fallosParaRepasar(levelId).forEach(({ levelId: origen, drill }) => {
+        pasos.push({ tipo: "ejercicio", drill, levelId: origen, esRepaso: true });
+    });
+
     if (teoria.rule) {
         pasos.push({
             tipo: "leccion",
@@ -1282,10 +1294,44 @@ function renderPasoSesion(level, pack) {
         const respuesta = getDrillResponse(level.id, drill.id);
         resultadoDelPaso = evaluateDrill(level.id, drill, respuesta);
         const acerto = resultadoDelPaso.status === "success";
+
+        // Apunta las palabras que dominas y manda a la cola lo que falles.
+        anotarAprendizaje(paso.levelId || level.id, drill, acerto);
+
         leoAlAzar(acerto ? LEO_ACIERTO : LEO_FALLO, acerto ? "celebra" : "anima");
+        if (typeof playSfx === "function") {
+            playSfx(acerto ? "correct" : "wrong");
+        }
+        persistState();
         renderAll();
     });
     dom.exercisesList.appendChild(accion);
+}
+
+// Registra lo aprendido en un paso: palabras del ejercicio de vocabulario y
+// entrada o salida de la cola de fallos.
+function anotarAprendizaje(levelId, drill, acerto) {
+    if (drill.kind === "choice" && drill.label === "VOC") {
+        const palabra = (/«([^»]+)»/.exec(drill.prompt || "") || [])[1];
+        if (palabra) {
+            registrarPalabra(palabra, acerto);
+        }
+    }
+    // El vocabulario del nivel tambien cuenta cuando aciertas una traduccion.
+    if (acerto && (drill.kind === "translation" || drill.kind === "tiles")) {
+        const lista = typeof VOCABULARY_BANK !== "undefined" ? VOCABULARY_BANK[levelId] : null;
+        const texto = normalizeText((drill.accepted || [])[0] || "");
+        (lista || []).forEach(([it]) => {
+            if (texto.includes(normalizeText(it))) {
+                registrarPalabra(it, true);
+            }
+        });
+    }
+    if (acerto) {
+        quitarFallo(levelId, drill.id);
+    } else {
+        apuntarFallo(levelId, drill);
+    }
 }
 
 function renderExerciseArea(level) {
@@ -2169,17 +2215,105 @@ function buildAdvanceMessage(requirements, weightedPercentage, gateFailures, sha
     return `Antes de avanzar: ${reasons.join("; ")}.`;
 }
 
+// Repaso espaciado DE VERDAD. Antes los intervalos eran fijos (1, 2 o 3 dias) y
+// nunca crecian: un nivel dominado seguia pidiendo repaso cada 3 dias, igual que
+// uno flojo. Ahora cada repaso superado empuja el siguiente mas lejos, y fallar
+// te devuelve al principio.
+const PASOS_REPASO = [1, 3, 7, 16, 35, 70];
+
 function scheduleReview(levelId, result) {
     if (!result) {
         return;
     }
     const today = dateKey(new Date());
-    const gapDays = result.weightedPercentage >= 88 ? 3 : result.weightedPercentage >= 80 ? 2 : 1;
+    const anterior = state.reviewByLevel[levelId];
+    const pasoPrevio = Number.isFinite(anterior?.paso) ? anterior.paso : -1;
+    const vaBien = result.weightedPercentage >= 80;
+    const paso = vaBien ? Math.min(pasoPrevio + 1, PASOS_REPASO.length - 1) : 0;
+
     state.reviewByLevel[levelId] = {
-        dueOn: addDays(today, gapDays),
+        dueOn: addDays(today, PASOS_REPASO[paso]),
+        paso,
         weakKinds: (result.weakKinds || []).slice(0, 2),
         weightedPercentage: result.weightedPercentage,
     };
+}
+
+// Contador visible de palabras dominadas: es la prueba de que avanzas.
+function pintarContadorPalabras() {
+    const barra = dom.streakDisplay?.parentElement;
+    if (!barra) {
+        return;
+    }
+    let chip = document.getElementById("palabras-chip");
+    if (!chip) {
+        chip = document.createElement("span");
+        chip.id = "palabras-chip";
+        chip.className = "palabras-chip";
+        chip.title = "Palabras que ya dominas";
+        barra.insertBefore(chip, dom.streakDisplay);
+    }
+    chip.textContent = `📚 ${palabrasAprendidas()}`;
+}
+
+// ─── Palabras que sabes ───
+// La app solo sabia que NIVELES habias completado, no que palabras dominabas,
+// asi que no podia ensenar progreso real ("sabes 214 palabras, 12 mas que la
+// semana pasada"), que es la sensacion de mejora que engancha.
+function registrarPalabra(palabra, acierto) {
+    const clave = String(palabra || "").trim().toLowerCase();
+    if (!clave) {
+        return;
+    }
+    const previo = state.palabras[clave] || { aciertos: 0, fallos: 0 };
+    if (acierto) {
+        previo.aciertos += 1;
+        previo.ultimoAcierto = dateKey(new Date());
+    } else {
+        previo.fallos += 1;
+    }
+    state.palabras[clave] = previo;
+}
+
+// Se cuenta como aprendida con dos aciertos y mas aciertos que fallos.
+function palabrasAprendidas() {
+    return Object.values(state.palabras).filter((p) => p.aciertos >= 2 && p.aciertos > p.fallos).length;
+}
+
+// ─── Los fallos vuelven ───
+// Antes se evaluaba un ejercicio y se olvidaba. Ahora lo que fallas entra en una
+// cola y reaparece al principio de la siguiente sesion.
+function apuntarFallo(levelId, drill) {
+    if (!drill || drill.kind === "shadowing") {
+        return;
+    }
+    const yaEsta = state.colaFallos.some((f) => f.levelId === levelId && f.drillId === drill.id);
+    if (!yaEsta) {
+        state.colaFallos.push({ levelId, drillId: drill.id, fecha: dateKey(new Date()) });
+    }
+    if (state.colaFallos.length > 30) {
+        state.colaFallos = state.colaFallos.slice(-30);
+    }
+}
+
+function quitarFallo(levelId, drillId) {
+    state.colaFallos = state.colaFallos.filter((f) => !(f.levelId === levelId && f.drillId === drillId));
+}
+
+// Hasta 2 ejercicios fallados de OTROS niveles, para colarlos al inicio.
+function fallosParaRepasar(levelIdActual) {
+    const salida = [];
+    for (const f of state.colaFallos) {
+        if (f.levelId === levelIdActual || salida.length >= 2) {
+            continue;
+        }
+        const pack = getExercisePack(f.levelId);
+        const drill = pack?.drills?.find((d) => d.id === f.drillId);
+        if (drill) {
+            salida.push({ levelId: f.levelId, drill });
+        }
+    }
+    return salida;
 }
 
 function addDays(dateString, days) {

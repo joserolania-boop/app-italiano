@@ -2086,3 +2086,16 @@ body {
 
 /* Nivel bloqueado: en oscuro el gris se comia el candado. */
 [data-theme="dark"] .path-node.bloqueado { opacity: .35; }
+
+
+/* Contador de palabras dominadas en la barra superior */
+.palabras-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: .85rem;
+    font-weight: 600;
+    background: var(--blue-light);
+    color: var(--blue);
+}
