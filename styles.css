@@ -1986,3 +1986,18 @@ body.modal-open { overflow: hidden; }
 .leccion-tabla .reference-card {
     margin: 0;
 }
+
+
+/* ─── Etiqueta de uso real del contenido ─── */
+.uso-chip {
+    display: inline-block;
+    margin-top: 8px;
+    padding: 5px 13px;
+    border-radius: 999px;
+    font-size: .78rem;
+    font-weight: 700;
+}
+.uso-chip.uso-diario    { background: var(--accent-light); color: var(--accent-dark); }
+.uso-chip.uso-frecuente { background: var(--blue-light);   color: var(--blue); }
+.uso-chip.uso-entender  { background: var(--orange-light); color: var(--orange-shadow); }
+.uso-chip.uso-formal    { background: #f3e8ff;             color: #7c3aed; }

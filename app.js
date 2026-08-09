@@ -704,6 +704,7 @@ function renderLesson() {
 
     dom.lessonTitle.textContent = level.id;
     dom.lessonObjective.textContent = level.objective || "";
+    pintarUsoReal(level.id);
     // La frase del nivel usa el EJEMPLO de la teoria, no el input inmersivo: son
     // frases distintas con la misma gramatica. El input inmersivo se reutilizaba
     // tal cual en los ejercicios (71% de solape medio, 71 niveles por encima del
@@ -1013,6 +1014,28 @@ const LEO_NIVEL_HECHO = ["Bravissimo! Livello finito!", "Che campione! (¡Qué c
 
 function leoAlAzar(lista, animacion) {
     leoDice(lista[Math.floor(Math.random() * lista.length)], animacion);
+}
+
+// Etiqueta de uso real: le dice al alumno si esto lo va a usar cada dia o si
+// solo lo necesita para entender. Todo el temario pesaba igual y no es asi.
+function pintarUsoReal(levelId) {
+    const cabecera = document.querySelector(".lesson-head") || dom.lessonObjective?.parentElement;
+    if (!cabecera) {
+        return;
+    }
+    const anterior = document.getElementById("uso-real-chip");
+    if (anterior) {
+        anterior.remove();
+    }
+    const dato = typeof USO_REAL !== "undefined" ? USO_REAL[levelId] : null;
+    if (!dato) {
+        return;
+    }
+    const chip = document.createElement("span");
+    chip.id = "uso-real-chip";
+    chip.className = `uso-chip uso-${dato[0]}`;
+    chip.textContent = dato[1];
+    cabecera.appendChild(chip);
 }
 
 // Frase que se muestra y se escucha en la cabecera del nivel.
