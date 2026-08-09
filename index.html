@@ -11,7 +11,7 @@
     <link rel="icon" type="image/svg+xml" href="./icons/icon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css?v=24">
     <script defer src="https://cloud.umami.is/script.js" data-website-id="469ba680-7ced-49a2-93fe-661de641403e"></script>
 </head>
@@ -73,6 +73,7 @@
             <h2>Elige tu nivel</h2>
             <p id="selector-hint">Empieza por M1-L1 si vas desde cero.</p>
             <button id="placement-btn" class="btn btn-outline btn-sm placement-cta" type="button">&#129504; Test de nivel &mdash; encuentra tu punto de partida</button>
+            <button id="repaso-btn" class="btn btn-accent btn-sm repaso-cta hidden" type="button">&#9889; Repaso r&aacute;pido</button>
         </div>
 
         <!-- Consulta rapida: chuletas imprescindibles de italiano -->
@@ -119,22 +120,21 @@
             </div>
         </div>
 
+        <details id="learning-details" class="learning-details">
+            <summary class="learning-summary">
+                <span class="learning-summary-text">📖 Cuadros y ficha teórica del nivel</span>
+                <span class="learning-summary-hint">Consúltalos cuando quieras</span>
+            </summary>
         <section class="learning-stack">
-            <article class="learning-card pretest-card">
-                <div class="learning-card-header">
-                    <div>
-                        <span class="learning-step">Paso 1</span>
-                        <h3>Pretest rapido</h3>
-                    </div>
-                    <span class="learning-badge">Anticipacion</span>
-                </div>
-                <p id="pretest-question" class="learning-copy"></p>
-                <textarea id="pretest-input" class="exercise-input textarea compact-textarea" placeholder="Responde sin mirar. Da igual si fallas."></textarea>
-                <div class="pretest-actions">
-                    <button id="pretest-check-btn" class="btn btn-ghost btn-sm" type="button">Mostrar respuesta</button>
-                </div>
-                <div id="pretest-feedback" class="learning-feedback hidden"></div>
-            </article>
+            <!-- Pretest retirado del flujo: se respondia a ciegas antes de haber
+                 aprendido nada, se podia saltar sin consecuencia y solo mostraba
+                 la respuesta. Los elementos siguen ocultos para no romper el JS. -->
+            <div class="hidden">
+                <p id="pretest-question"></p>
+                <textarea id="pretest-input"></textarea>
+                <button id="pretest-check-btn" type="button"></button>
+                <div id="pretest-feedback"></div>
+            </div>
 
             <article class="learning-card theory-card">
                 <div class="learning-card-header">
@@ -187,6 +187,7 @@
                 </details>
             </article>
         </section>
+        </details>
 
         <div class="exercises-area">
             <div class="exercises-header">
@@ -316,6 +317,9 @@
 
 <script src="./m1-exercises.js?v=16"></script>
 <script src="./italy-assets.js?v=1"></script>
+<script src="./vocabulary.js?v=1"></script>
+<script src="./uso-real.js?v=1"></script>
+<script src="./notas-claras.js?v=1"></script>
 <script src="./quick-reference.js?v=2"></script>
 <script src="./app.js?v=28"></script>
 <script src="./enhancements.js?v=7"></script>

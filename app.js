@@ -6,6 +6,7 @@ const KIND_WEIGHTS = {
     choice: 0.12,
     conversation: 0.22,
     shadowing: 0.10,
+    tiles: 0.10, // calentamiento de reconocimiento: cuenta poco, no es produccion
 };
 const DEFAULT_PASS_PERCENTAGE = 72;
 const DEFAULT_DAILY_GOAL = 40;
@@ -30,6 +31,8 @@ const state = {
     notesByLevel: {},
     exerciseByLevel: {},
     reviewByLevel: {},
+    palabras: {},      // que palabras dominas
+    colaFallos: [],    // lo que fallaste y debe volver
     streakDays: 0,
     lastStudyDate: null,
     xp: 0,
@@ -39,6 +42,7 @@ const state = {
     speechByLevel: {},
     theme: "light",
     placementDone: false,
+    placementLevelId: null,
     soundOff: false,
     isPremium: false,
 };
@@ -310,7 +314,12 @@ function sliceBetween(text, startMarker, endMarker) {
 
 function safeCell(row, key) {
     const value = row?.[key];
-    return value ? String(value).trim() : "";
+    if (!value) {
+        return "";
+    }
+    // Las celdas del roadmap vienen en markdown envueltas en comillas invertidas
+    // (`texto`). Sin quitarlas se mostraban literalmente en la frase del nivel.
+    return String(value).trim().replace(/^`+|`+$/g, "").trim();
 }
 
 function hydrateStateFromStorage() {
@@ -325,6 +334,8 @@ function hydrateStateFromStorage() {
             state.notesByLevel = saved.notesByLevel || {};
             state.exerciseByLevel = saved.exerciseByLevel || {};
             state.reviewByLevel = saved.reviewByLevel || {};
+            state.palabras = saved.palabras || {};
+            state.colaFallos = Array.isArray(saved.colaFallos) ? saved.colaFallos : [];
             state.streakDays = Number(saved.streakDays || 0);
             state.lastStudyDate = saved.lastStudyDate || null;
             state.xp = Number(saved.xp || 0);
@@ -334,6 +345,7 @@ function hydrateStateFromStorage() {
             state.speechByLevel = saved.speechByLevel || {};
             state.theme = saved.theme === "dark" ? "dark" : "light";
             state.placementDone = Boolean(saved.placementDone);
+            state.placementLevelId = saved.placementLevelId || null;
             state.soundOff = Boolean(saved.soundOff);
             state.isPremium = Boolean(saved.isPremium);
         } catch {
@@ -354,7 +366,7 @@ function hydrateStateFromStorage() {
         state.activeLevelId = firstLevel?.id || null;
     }
 
-    updateStreakForToday();
+    refreshStreakOnLoad();
     persistState();
 }
 
@@ -366,6 +378,8 @@ function persistState() {
         notesByLevel: state.notesByLevel,
         exerciseByLevel: state.exerciseByLevel,
         reviewByLevel: state.reviewByLevel,
+        palabras: state.palabras,
+        colaFallos: state.colaFallos,
         streakDays: state.streakDays,
         lastStudyDate: state.lastStudyDate,
         xp: state.xp,
@@ -375,52 +389,81 @@ function persistState() {
         speechByLevel: state.speechByLevel,
         theme: state.theme,
         placementDone: state.placementDone,
+        placementLevelId: state.placementLevelId,
         soundOff: state.soundOff,
         isPremium: state.isPremium,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
 }
 
-function updateStreakForToday() {
-    const now = new Date();
-    const todayKey = dateKey(now);
+function daysBetween(fromKey, toKey) {
+    return Math.round((new Date(`${toKey}T00:00:00`) - new Date(`${fromKey}T00:00:00`)) / STREAK_DAY_MS);
+}
 
+// Al abrir la app SOLO se comprueba si la racha se ha roto. Nunca se incrementa:
+// abrir la app no es estudiar. La racha sube en registerStudyToday(), que se
+// dispara al ganar XP (es decir, al practicar de verdad).
+function refreshStreakOnLoad() {
     if (!state.lastStudyDate) {
-        state.lastStudyDate = todayKey;
-        state.streakDays = Math.max(1, state.streakDays || 0);
+        state.streakDays = 0;
         return;
     }
-
+    const todayKey = dateKey(new Date());
     if (state.lastStudyDate === todayKey) {
         return;
     }
-
-    const last = new Date(state.lastStudyDate + "T00:00:00");
-    const diffDays = Math.round((new Date(todayKey + "T00:00:00") - last) / STREAK_DAY_MS);
-
-    if (diffDays === 1) {
-        state.streakDays = Math.max(1, state.streakDays + 1);
-    } else {
-        state.streakDays = 1;
+    if (daysBetween(state.lastStudyDate, todayKey) > 1) {
+        state.streakDays = 0;
     }
-
-    state.lastStudyDate = todayKey;
 }
 
+// Se llama cuando el usuario practica de verdad.
+function registerStudyToday() {
+    const todayKey = dateKey(new Date());
+    if (state.lastStudyDate === todayKey) {
+        return false;
+    }
+    const continua = state.lastStudyDate && daysBetween(state.lastStudyDate, todayKey) === 1;
+    state.streakDays = continua ? (state.streakDays || 0) + 1 : 1;
+    state.lastStudyDate = todayKey;
+    return true;
+}
+
+// Fecha LOCAL, no UTC: con toISOString() estudiar de noche contaba como el dia
+// anterior en cualquier huso al este de Greenwich y rompia la racha sin motivo.
 function dateKey(dateObj) {
-    return dateObj.toISOString().slice(0, 10);
+    const anio = dateObj.getFullYear();
+    const mes = String(dateObj.getMonth() + 1).padStart(2, "0");
+    const dia = String(dateObj.getDate()).padStart(2, "0");
+    return `${anio}-${mes}-${dia}`;
 }
 
 function renderAll() {
     renderTopBar();
     renderProgress();
+    pintarBotonRepaso();
     renderModuleTabs();
     renderLevelGrid();
     renderLesson();
 }
 
+function terminarRepasoRapido() {
+    enModoRepaso = false;
+    pasosRepaso = [];
+    pasoActual = 0;
+    resultadoDelPaso = null;
+    awardXp(15, "Repaso rápido completado");
+    leoAlAzar(LEO_NIVEL_HECHO, "celebra");
+    if (typeof showToast === "function") {
+        showToast("⚡ Repaso terminado", "Has refrescado lo que peor llevabas", "goal");
+    }
+    persistState();
+    renderAll();
+}
+
 function renderTopBar() {
-    dom.streakDisplay.textContent = `🔥 ${state.streakDays} dia${state.streakDays === 1 ? "" : "s"}`;
+    dom.streakDisplay.textContent = `🔥 ${state.streakDays} día${state.streakDays === 1 ? "" : "s"}`;
+    pintarContadorPalabras();
 
     if (dom.xpDisplay) {
         dom.xpDisplay.textContent = `⚡ ${state.xp} XP`;
@@ -488,8 +531,15 @@ function awardXp(amount, reason) {
     state.xp += gain;
     state.xpByDate[today] = Number(state.xpByDate[today] || 0) + gain;
 
+    // Practicar de verdad es lo que mantiene viva la racha, no abrir la app.
+    const rachaSubio = registerStudyToday();
+
     persistState();
     renderTopBar();
+
+    if (rachaSubio && typeof showToast === "function") {
+        showToast(`🔥 Racha de ${state.streakDays} día${state.streakDays === 1 ? "" : "s"}`, "Sigue mañana para no perderla", "goal");
+    }
 
     if (typeof showToast === "function") {
         showToast(`+${gain} XP`, reason || "", "xp");
@@ -613,6 +663,7 @@ function renderLevelGrid() {
     module.levels.forEach((level, index) => {
         const isCompleted = state.completedLevelIds.includes(level.id);
         const isActive = level.id === state.activeLevelId;
+        const bloqueado = !estaDesbloqueado(level.id);
 
         const row = document.createElement("div");
         row.className = "path-row";
@@ -620,6 +671,7 @@ function renderLevelGrid() {
         row.style.setProperty("--path-offset", offset);
 
         let stateClass = "future";
+        if (bloqueado) stateClass = "bloqueado";
         if (isCompleted) stateClass = "completed";
         if (isActive) stateClass = "active";
 
@@ -639,10 +691,19 @@ function renderLevelGrid() {
         `;
 
         node.addEventListener("click", () => {
+            if (bloqueado) {
+                leoDice("Prima questo!");
+                if (typeof showToast === "function") {
+                    showToast("🔒 Nivel bloqueado", "Termina el nivel anterior para abrir este", "goal");
+                }
+                return;
+            }
             state.activeLevelId = level.id;
+            reiniciarSesion();
             persistState();
             renderLevelGrid();
             renderLesson();
+            leoAlAzar(LEO_BIENVENIDA, "celebra");
             if (typeof bounceMascot === "function") bounceMascot();
             dom.lessonSection.scrollIntoView({ behavior: "smooth", block: "start" });
         });
@@ -665,9 +726,16 @@ function renderLesson() {
 
     dom.lessonTitle.textContent = level.id;
     dom.lessonObjective.textContent = level.objective || "";
-    dom.immersiveText.textContent = level.immersiveInput || "Sin texto de practica para este nivel.";
-    dom.helpGrammar.textContent = simplifyGrammar(level.grammar);
-    dom.helpPatch.textContent = buildPatchCoaching(level.patchPriority);
+    pintarUsoReal(level.id);
+    // La frase del nivel usa el EJEMPLO de la teoria, no el input inmersivo: son
+    // frases distintas con la misma gramatica. El input inmersivo se reutilizaba
+    // tal cual en los ejercicios (71% de solape medio, 71 niveles por encima del
+    // 60%), asi que daba la respuesta hecha. Con el ejemplo baja al 25%.
+    dom.immersiveText.textContent = fraseDelNivel(level);
+    // Si el nivel tiene nota reescrita en lenguaje de aprendiz, se usa esa.
+    const nota = typeof NOTAS_CLARAS !== "undefined" ? NOTAS_CLARAS[level.id] : null;
+    dom.helpGrammar.textContent = nota ? nota.practica : simplifyGrammar(level.grammar);
+    dom.helpPatch.textContent = nota ? nota.ojo : buildPatchCoaching(level.patchPriority);
 
     dom.notesArea.value = state.notesByLevel[level.id] || "";
     renderLearningGuide(level);
@@ -855,8 +923,8 @@ function inferTheoryReferenceKeys(level, guide) {
         { key: "modali-base", terms: ["dovere", "potere", "volere", "modale"] },
         { key: "passato-prossimo-avere", terms: ["passato prossimo con avere", "participio regolare"] },
         { key: "passato-prossimo-essere", terms: ["passato prossimo con essere", "movimiento frecuentes usan essere", "concordancia del participio"] },
-        { key: "ce-ci-sono", terms: ["c'e", "ci sono", "existencia"] },
-        { key: "comparativi-superlativi", terms: ["comparativi", "superlativo", "piu", "meno"] },
+        { key: "ce-ci-sono", terms: ["c'è", "ci sono", "existencia"] },
+        { key: "comparativi-superlativi", terms: ["comparativi", "superlativo", "più", "meno"] },
         { key: "clitici-diretti", terms: ["lo/la/li/le", "pronombres directos", "cliticos directos"] },
         { key: "clitici-indiretti", terms: ["gli/le", "indirectos", "destinatario"] },
         { key: "ci-ne", terms: ["ci/ne", "ci suele", "ne puede"] },
@@ -928,6 +996,373 @@ function buildReferenceCard(reference) {
     return card;
 }
 
+// ─── Sesion paso a paso (un ejercicio por pantalla) ───
+// Antes se soltaban los 5 ejercicios en una pared vertical y habia que
+// scrollear la teoria entera para llegar. Eso parecia deberes. Ahora se va de
+// uno en uno, con correccion inmediata, como en las apps de idiomas.
+let pasoActual = 0;
+let resultadoDelPaso = null;
+
+function reiniciarSesion() {
+    pasoActual = 0;
+    resultadoDelPaso = null;
+}
+
+// Leo reacciona a lo que acabas de hacer, en vez de soltar frases al azar.
+const LEO_ACIERTO = ["Bravissimo!", "Perfetto!", "Che bello!", "Continua così!", "Sei un mito!"];
+const LEO_FALLO = ["Dai, ci sei quasi!", "Niente paura!", "Piano piano...", "Riprova, amico!"];
+
+// Leo habla y ADEMAS se mueve. Antes solo cambiaba el texto de un bocadillo
+// diminuto, asi que no se notaba que estuviera reaccionando a nada.
+function leoDice(frase, animacion) {
+    const burbuja = document.getElementById("mascot-bubble");
+    if (burbuja) {
+        burbuja.textContent = frase;
+        burbuja.classList.add("show");
+        clearTimeout(leoDice._t);
+        leoDice._t = setTimeout(() => burbuja.classList.remove("show"), 3800);
+    }
+    const cuerpo = document.querySelector(".mascot-body");
+    if (cuerpo && animacion) {
+        cuerpo.classList.remove("celebra", "anima");
+        void cuerpo.offsetWidth; // reinicia la animacion
+        cuerpo.classList.add(animacion);
+        setTimeout(() => cuerpo.classList.remove(animacion), 800);
+    }
+}
+
+// Frases por momento, para que acompane el recorrido en vez de repetir lo mismo.
+const LEO_BIENVENIDA = ["Andiamo! (¡Vamos!)", "Cominciamo! (¡Empezamos!)", "Pronto? (¿Listo?)"];
+const LEO_LECCION = ["Attento! (¡Atento!)", "Guarda bene! (¡Fíjate bien!)", "Questo è importante!"];
+const LEO_NIVEL_HECHO = ["Bravissimo! Livello finito!", "Che campione! (¡Qué campeón!)", "Ottimo lavoro! (¡Buen trabajo!)"];
+
+function leoAlAzar(lista, animacion) {
+    leoDice(lista[Math.floor(Math.random() * lista.length)], animacion);
+}
+
+// Etiqueta de uso real: le dice al alumno si esto lo va a usar cada dia o si
+// solo lo necesita para entender. Todo el temario pesaba igual y no es asi.
+function pintarUsoReal(levelId) {
+    const cabecera = document.querySelector(".lesson-head") || dom.lessonObjective?.parentElement;
+    if (!cabecera) {
+        return;
+    }
+    const anterior = document.getElementById("uso-real-chip");
+    if (anterior) {
+        anterior.remove();
+    }
+    const dato = typeof USO_REAL !== "undefined" ? USO_REAL[levelId] : null;
+    if (!dato) {
+        return;
+    }
+    const chip = document.createElement("span");
+    chip.id = "uso-real-chip";
+    chip.className = `uso-chip uso-${dato[0]}`;
+    chip.textContent = dato[1];
+    cabecera.appendChild(chip);
+}
+
+// Frase que se muestra y se escucha en la cabecera del nivel.
+function fraseDelNivel(level) {
+    const ejemplo = getLearningGuide(level.id)?.theory?.example;
+    return ejemplo || level.immersiveInput || "Sin texto de practica para este nivel.";
+}
+
+// Un nivel se abre cuando has terminado el anterior. Antes se podia pinchar
+// M10-L10 el primer dia, asi que la progresion no significaba nada.
+// Excepcion: el test de nivel puede colocarte mas adelante, y todo lo anterior
+// a ese punto de partida queda abierto para que no te encierre.
+function estaDesbloqueado(levelId) {
+    const niveles = state.data?.levels || [];
+    const idx = niveles.findIndex((l) => l.id === levelId);
+    if (idx <= 0) {
+        return true;
+    }
+    if (state.completedLevelIds.includes(levelId)) {
+        return true;
+    }
+    if (state.completedLevelIds.includes(niveles[idx - 1].id)) {
+        return true;
+    }
+    // Punto de partida elegido con el test de nivel.
+    const inicio = niveles.findIndex((l) => l.id === state.placementLevelId);
+    return inicio >= 0 && idx <= inicio;
+}
+
+// ─── Ejercicios de CONJUGAR y de VOCABULARIO ───
+// El temario cubre bien la gramatica, pero no habia ni un solo ejercicio de
+// conjugar un verbo ni de vocabulario (contados: 0 y 0). Se generan a partir de
+// las tablas de los cuadros de referencia, que ya traen los datos reales, y se
+// montan como cloze y choice para no anadir renderizado ni evaluacion nuevos.
+function filasUtiles(ficha) {
+    return (ficha?.entries || []).filter(
+        (f) => Array.isArray(f) && f.length >= 2 && String(f[0]).trim() && String(f[1]).trim()
+    );
+}
+
+// Conjugacion -> cloze: "io ___ · tu ___ · lui/lei ___"
+function construirDrillConjugacion(levelId, ficha) {
+    const filas = filasUtiles(ficha).filter((f) => !String(f[1]).includes("/"));
+    if (filas.length < 3) {
+        return null;
+    }
+    const elegidas = barajaEstable(filas, `${levelId}:conj`).slice(0, 3);
+    return {
+        id: "conj-1",
+        kind: "cloze",
+        label: "VB",
+        prompt: `Conjuga · ${ficha.title}`,
+        sentence: elegidas.map((f) => `${String(f[0]).trim()} ___`).join("   ·   "),
+        blanks: elegidas.map((f) => String(f[1]).trim()),
+        feedback: `Repasa el cuadro «${ficha.title}». Estas formas hay que tenerlas automatizadas.`,
+    };
+}
+
+// Vocabulario -> choice. Usa el banco de vocabulario del nivel (palabras
+// extraidas de sus propios ejercicios) y, si ese nivel no tiene, cae a la ficha
+// de referencia como respaldo.
+function construirDrillVocabulario(levelId, ficha) {
+    const delBanco = typeof VOCABULARY_BANK !== "undefined" ? VOCABULARY_BANK[levelId] : null;
+    const filas = Array.isArray(delBanco) && delBanco.length >= 3 ? delBanco : filasUtiles(ficha);
+    if (filas.length < 3) {
+        return null;
+    }
+    const mezcladas = barajaEstable(filas, `${levelId}:voc`);
+    const buena = mezcladas[0];
+    const opciones = barajaEstable(
+        [String(buena[1]).trim(), String(mezcladas[1][1]).trim(), String(mezcladas[2][1]).trim()],
+        `${levelId}:opts`
+    );
+    if (new Set(opciones).size < 3) {
+        return null; // sin distractores distintos no hay ejercicio real
+    }
+    return {
+        id: "voc-1",
+        kind: "choice",
+        label: "VOC",
+        prompt: `¿Qué significa «${String(buena[0]).trim()}»?`,
+        options: opciones,
+        answer: String(buena[1]).trim(),
+        feedback: ficha ? `Vocabulario del cuadro «${ficha.title}».` : "Vocabulario de este nivel.",
+    };
+}
+
+// La sesion mezcla LECCIONES obligatorias con los ejercicios, en vez de
+// examinar directamente. Antes la app pedia producir sin haber ensenado nada:
+// la teoria estaba en un panel aparte que se podia saltar entero.
+function construirPasos(levelId, pack) {
+    if (enModoRepaso) {
+        return pasosRepaso;
+    }
+    const teoria = getLearningGuide(levelId)?.theory || {};
+    const drills = Array.isArray(pack?.drills) ? pack.drills : [];
+    const pasos = [];
+
+    // Lo que fallaste en sesiones anteriores vuelve, antes de lo nuevo.
+    fallosParaRepasar(levelId).forEach(({ levelId: origen, drill }) => {
+        pasos.push({ tipo: "ejercicio", drill, levelId: origen, esRepaso: true });
+    });
+
+    if (teoria.rule) {
+        pasos.push({
+            tipo: "leccion",
+            titulo: "La regla de este nivel",
+            cuerpo: teoria.rule,
+            ejemplo: teoria.example || "",
+            conTabla: true, // adjunta el cuadro de conjugacion si el nivel tiene uno
+        });
+    }
+
+    // Justo tras la leccion, practica lo que la tabla acaba de ensenar.
+    const nivel = (state.data?.levels || []).find((l) => l.id === levelId);
+    const fichas = nivel ? getTheoryReferences(nivel, getLearningGuide(levelId)) : [];
+    // El banco marca cada ficha con su tipo: las de "Conjugacion" dan ejercicio
+    // de verbos; las de "Lista" (expresiones, numeros...) dan el de vocabulario.
+    const fichaVerbos = fichas.find((f) => f.type === "Conjugacion");
+    const fichaVocab = fichas.find((f) => f.type === "Lista" || f.type === "Articulos") || null;
+
+    if (fichaVerbos) {
+        const d = construirDrillConjugacion(levelId, fichaVerbos);
+        if (d) pasos.push({ tipo: "ejercicio", drill: d });
+    }
+    const dVoc = construirDrillVocabulario(levelId, fichaVocab);
+    if (dVoc) {
+        pasos.push({ tipo: "ejercicio", drill: dVoc });
+    }
+
+    drills.forEach((drill, i) => {
+        pasos.push({ tipo: "ejercicio", drill });
+        // A mitad de camino, recordatorio del fallo tipico antes de seguir.
+        if (i === 1 && teoria.mistake) {
+            pasos.push({
+                tipo: "leccion",
+                titulo: "Ojo con este error",
+                cuerpo: teoria.mistake,
+                ejemplo: teoria.contrast || "",
+            });
+        }
+    });
+
+    return pasos;
+}
+
+function renderPasoSesion(level, pack) {
+    const pasos = construirPasos(level.id, pack);
+    const paso = pasos[pasoActual];
+    const total = pasos.length;
+
+    const barra = document.createElement("div");
+    barra.className = "sesion-progreso";
+    pasos.forEach((p, i) => {
+        const tramo = document.createElement("span");
+        const estado = i < pasoActual ? "hecho" : i === pasoActual ? "activo" : "";
+        tramo.className = `tramo ${estado} ${p.tipo === "leccion" ? "leccion" : ""}`.trim();
+        barra.appendChild(tramo);
+    });
+    dom.exercisesList.appendChild(barra);
+
+    // Paso de LECCION: se lee y se sigue, no se evalua, pero no se puede saltar.
+    if (paso.tipo === "leccion") {
+        const tarjeta = document.createElement("article");
+        tarjeta.className = "leccion-card";
+        tarjeta.innerHTML = `
+            <span class="leccion-badge">Lección</span>
+            <h4 class="leccion-titulo">${paso.titulo}</h4>
+            <p class="leccion-cuerpo">${paso.cuerpo}</p>
+        `;
+        if (paso.ejemplo) {
+            const ej = document.createElement("p");
+            ej.className = "leccion-ejemplo";
+            ej.textContent = paso.ejemplo;
+            tarjeta.appendChild(ej);
+
+            const oir = document.createElement("button");
+            oir.type = "button";
+            oir.className = "btn btn-outline btn-sm";
+            oir.textContent = "🔊 Escuchar";
+            oir.addEventListener("click", () => speakItalian(paso.ejemplo, level.id, "leccion"));
+            tarjeta.appendChild(oir);
+        }
+
+        // La tabla de conjugacion del nivel, dentro de la leccion. Una regla en
+        // prosa ("usa essere") ensena menos que ver sono/sei/è/siamo/siete/sono.
+        if (paso.conTabla) {
+            const refs = getTheoryReferences(level, getLearningGuide(level.id));
+            if (refs.length) {
+                const caja = document.createElement("div");
+                caja.className = "leccion-tabla";
+                caja.appendChild(buildReferenceCard(refs[0]));
+                tarjeta.appendChild(caja);
+            }
+        }
+        dom.exercisesList.appendChild(tarjeta);
+
+        const seguir = document.createElement("button");
+        seguir.type = "button";
+        seguir.className = "btn btn-accent btn-lg sesion-accion";
+        seguir.textContent = "Entendido";
+        seguir.addEventListener("click", () => {
+            leoAlAzar(LEO_LECCION, "anima");
+            pasoActual += 1;
+            resultadoDelPaso = null;
+            if (pasoActual >= total) {
+                onCheckExercises();
+                return;
+            }
+            renderAll();
+        });
+        dom.exercisesList.appendChild(seguir);
+        return;
+    }
+
+    const drill = paso.drill;
+    const nivelDelPaso = paso.levelId || level.id;
+    if (paso.esRepaso) {
+        const marca = document.createElement("p");
+        marca.className = "marca-repaso";
+        marca.textContent = `🔁 Repaso de ${nivelDelPaso}`;
+        dom.exercisesList.appendChild(marca);
+    }
+    dom.exercisesList.appendChild(buildExerciseCard(nivelDelPaso, drill, resultadoDelPaso));
+
+    if (resultadoDelPaso) {
+        const aviso = document.createElement("div");
+        aviso.className = `sesion-feedback ${resultadoDelPaso.status}`;
+        const titulo = resultadoDelPaso.status === "success" ? "¡Correcto!" : resultadoDelPaso.status === "partial" ? "Casi" : "No exactamente";
+        aviso.innerHTML = `<strong>${titulo}</strong><span>${resultadoDelPaso.feedback || ""}</span>`;
+        if (resultadoDelPaso.status !== "success" && resultadoDelPaso.answer) {
+            const sol = document.createElement("span");
+            sol.className = "sesion-solucion";
+            sol.textContent = `Solución: ${resultadoDelPaso.answer}`;
+            aviso.appendChild(sol);
+        }
+        dom.exercisesList.appendChild(aviso);
+    }
+
+    const accion = document.createElement("button");
+    accion.type = "button";
+    accion.className = resultadoDelPaso ? "btn btn-success btn-lg sesion-accion" : "btn btn-accent btn-lg sesion-accion";
+    accion.textContent = resultadoDelPaso
+        ? (pasoActual + 1 < total ? "Continuar" : "Ver resultado")
+        : "Comprobar";
+    accion.addEventListener("click", () => {
+        if (resultadoDelPaso) {
+            pasoActual += 1;
+            resultadoDelPaso = null;
+            if (pasoActual >= total) {
+                if (enModoRepaso) {
+                    terminarRepasoRapido();
+                    return;
+                }
+                onCheckExercises();
+                return;
+            }
+            renderAll();
+            return;
+        }
+        const respuesta = getDrillResponse(nivelDelPaso, drill.id);
+        resultadoDelPaso = evaluateDrill(nivelDelPaso, drill, respuesta);
+        const acerto = resultadoDelPaso.status === "success";
+
+        // Apunta las palabras que dominas y manda a la cola lo que falles.
+        anotarAprendizaje(paso.levelId || level.id, drill, acerto);
+
+        leoAlAzar(acerto ? LEO_ACIERTO : LEO_FALLO, acerto ? "celebra" : "anima");
+        if (typeof playSfx === "function") {
+            playSfx(acerto ? "correct" : "wrong");
+        }
+        persistState();
+        renderAll();
+    });
+    dom.exercisesList.appendChild(accion);
+}
+
+// Registra lo aprendido en un paso: palabras del ejercicio de vocabulario y
+// entrada o salida de la cola de fallos.
+function anotarAprendizaje(levelId, drill, acerto) {
+    if (drill.kind === "choice" && drill.label === "VOC") {
+        const palabra = (/«([^»]+)»/.exec(drill.prompt || "") || [])[1];
+        if (palabra) {
+            registrarPalabra(palabra, acerto);
+        }
+    }
+    // El vocabulario del nivel tambien cuenta cuando aciertas una traduccion.
+    if (acerto && (drill.kind === "translation" || drill.kind === "tiles")) {
+        const lista = typeof VOCABULARY_BANK !== "undefined" ? VOCABULARY_BANK[levelId] : null;
+        const texto = normalizeText((drill.accepted || [])[0] || "");
+        (lista || []).forEach(([it]) => {
+            if (texto.includes(normalizeText(it))) {
+                registrarPalabra(it, true);
+            }
+        });
+    }
+    if (acerto) {
+        quitarFallo(levelId, drill.id);
+    } else {
+        apuntarFallo(levelId, drill);
+    }
+}
+
 function renderExerciseArea(level) {
     const pack = getExercisePack(level.id);
     const dueReviews = getDueReviews(level.id);
@@ -948,11 +1383,33 @@ function renderExerciseArea(level) {
     }
 
     dom.noExercisesMsg.classList.add("hidden");
-    dom.checkBtn.disabled = false;
     dom.retryBtn.disabled = false;
 
     const levelExerciseState = getExerciseState(level.id);
     const lastResult = levelExerciseState.lastResult || null;
+
+    // Modo sesion: un ejercicio por pantalla mientras quedan pasos por hacer.
+    // Al terminar todos se cae al resumen de siempre (lastResult).
+    const totalPasos = construirPasos(level.id, pack).length;
+    if (pasoActual < totalPasos) {
+        dom.checkBtn.classList.add("hidden");
+        dom.scoreBar.classList.add("hidden");
+        dom.completeBtn.disabled = true;
+        dom.completeHint.textContent = buildReviewSuffix(
+            `Paso ${pasoActual + 1} de ${totalPasos}. Lecciones y ejercicios, uno a uno.`,
+            dueReviews
+        );
+        renderPasoSesion(level, pack);
+        return;
+    }
+
+    dom.checkBtn.classList.remove("hidden");
+    dom.checkBtn.disabled = false;
+
+    // Resumen del nivel: es el momento de mas satisfaccion y estaba soso.
+    if (lastResult) {
+        dom.exercisesList.appendChild(construirResumenNivel(level, lastResult));
+    }
 
     pack.drills.forEach((drill) => {
         const result = lastResult?.perDrill?.[drill.id] || null;
@@ -1007,6 +1464,63 @@ function buildExerciseCard(levelId, drill, result) {
         textarea.value = response || "";
         textarea.addEventListener("input", () => saveDrillResponse(levelId, drill.id, textarea.value));
         wrapper.appendChild(textarea);
+    }
+
+    if (drill.kind === "tiles") {
+        // La respuesta guardada son INDICES de drill.words, no palabras: asi las
+        // palabras repetidas ("e", "la") funcionan bien como fichas separadas.
+        const elegidas = Array.isArray(response) ? [...response] : [];
+
+        const zonaRespuesta = document.createElement("div");
+        zonaRespuesta.className = "tiles-answer";
+
+        const banco = document.createElement("div");
+        banco.className = "tiles-bank";
+
+        const pintar = () => {
+            zonaRespuesta.innerHTML = "";
+            banco.innerHTML = "";
+
+            if (!elegidas.length) {
+                const pista = document.createElement("span");
+                pista.className = "tiles-placeholder";
+                pista.textContent = "Toca las palabras en orden...";
+                zonaRespuesta.appendChild(pista);
+            }
+
+            elegidas.forEach((indice, posicion) => {
+                const ficha = document.createElement("button");
+                ficha.type = "button";
+                ficha.className = "tile tile-selected";
+                ficha.textContent = (drill.words || [])[indice] || "";
+                ficha.addEventListener("click", () => {
+                    elegidas.splice(posicion, 1);
+                    saveDrillResponse(levelId, drill.id, [...elegidas]);
+                    pintar();
+                });
+                zonaRespuesta.appendChild(ficha);
+            });
+
+            (drill.words || []).forEach((palabra, indice) => {
+                if (elegidas.includes(indice)) {
+                    return;
+                }
+                const ficha = document.createElement("button");
+                ficha.type = "button";
+                ficha.className = "tile";
+                ficha.textContent = palabra;
+                ficha.addEventListener("click", () => {
+                    elegidas.push(indice);
+                    saveDrillResponse(levelId, drill.id, [...elegidas]);
+                    pintar();
+                });
+                banco.appendChild(ficha);
+            });
+        };
+
+        pintar();
+        wrapper.appendChild(zonaRespuesta);
+        wrapper.appendChild(banco);
     }
 
     if (drill.kind === "cloze") {
@@ -1187,34 +1701,91 @@ function typeToClass(kind) {
     if (kind === "conversation") return "cr";
     if (kind === "choice") return "mp";
     if (kind === "shadowing") return "sh";
+    if (kind === "tiles") return "op";
+    if (kind === "conjugation") return "vb";
     return "ti";
 }
 
 function simplifyGrammar(rawXml) {
     const attributes = extractXmlAttributes(rawXml);
-    const focus = cleanGrammarText(attributes.foco || "");
-    const transfer = cleanGrammarText(attributes.transferencia || "");
+    const focus = limpiarJerga(cleanGrammarText(attributes.foco || ""));
+    const transfer = limpiarJerga(cleanGrammarText(attributes.transferencia || ""));
 
     if (!focus && !transfer) {
         return "Repasa la estructura principal de este nivel.";
     }
 
+    // Nada de jerga: "Hoy fijas" y "paradigma" no le dicen nada a quien aprende.
     const parts = [];
     if (focus) {
-        parts.push(`Hoy fijas: ${focus}.`);
+        parts.push(`Hoy practicas: ${focus}.`);
     }
-    if (transfer) {
-        parts.push(`Evita: ${transfer}.`);
+    const aviso = frasearAviso(transfer);
+    if (aviso) {
+        parts.push(aviso);
     }
     return parts.join(" ");
 }
 
-function buildPatchCoaching(patchPriority) {
-    const text = String(patchPriority || "").trim();
-    if (!text) {
-        return "Corrige primero el error que más se repite antes de avanzar.";
+// Los avisos del temario vienen de tres formas distintas ("no omitir X",
+// "evitar X", "fijar X"), y meterlos todos en la misma plantilla producia
+// frases sin sentido o con el significado invertido.
+function frasearAviso(texto) {
+    const t = String(texto || "").trim();
+    if (!t) {
+        return "";
     }
-    return `Tu error clave aqui es: ${text}. Corrigelo antes de intentar ir mas rapido.`;
+    if (/^no\s/i.test(t)) {
+        return `Ojo: ${t}.`;
+    }
+    if (/^evitar\s/i.test(t)) {
+        return `Evita ${t.replace(/^evitar\s/i, "")}.`;
+    }
+    if (/^(fijar|automatizar|cerrar|practicar|memorizar|consolidar)\s/i.test(t)) {
+        return `Céntrate en ${t.replace(/^\S+\s/, "")}.`;
+    }
+    return `Fíjate en esto: ${t}.`;
+}
+
+function buildPatchCoaching(patchPriority) {
+    const text = limpiarJerga(String(patchPriority || "").trim());
+    if (!text) {
+        return "Fíjate en el fallo que más te repitas y corrígelo antes de seguir.";
+    }
+    // Antes decia "Tu error clave aqui es: articulos basicos. Corrigelo", que no
+    // significa nada: los articulos son el TEMA, no un error.
+    return `Aquí se falla sobre todo en esto: ${text}. Míralo con calma antes de avanzar.`;
+}
+
+// Sustituye la jerga linguistica por palabras que entienda cualquiera.
+const JERGA = [
+    // Primero las expresiones enteras, si no salen frases rotas como
+    // "densidad el vocabulario" al sustituir palabra por palabra.
+    [/\bdensidad l[eé]xica\b/gi, "cantidad de palabras distintas"],
+    [/\bprecisi[oó]n l[eé]xica[l]?\b/gi, "elegir la palabra exacta"],
+    [/\briqueza l[eé]xica\b/gi, "variedad de vocabulario"],
+    [/\bcarga l[eé]xica\b/gi, "cantidad de vocabulario"],
+    [/\bl[eé]xic[oa][l]?\b/gi, "de vocabulario"],
+    [/\bparadigma\b/gi, "la tabla del verbo"],
+    [/\bmorfolog[ií]a\b/gi, "la forma de las palabras"],
+    [/\bconcordancia\b/gi, "que concuerden género y número"],
+    [/\bcl[ií]ticos?\b/gi, "los pronombres átonos (lo, la, ne, ci)"],
+    [/\bdesinencias?\b/gi, "las terminaciones"],
+    [/\bflexi[oó]n\b/gi, "los cambios de terminación"],
+    [/\bsintagma\b/gi, "el grupo de palabras"],
+    [/\bnominalizaci[oó]n\b/gi, "convertir verbos en sustantivos"],
+    [/\bhedging\b/gi, "suavizar lo que afirmas"],
+    [/\btransferencia\b/gi, "calcar del español"],
+    [/\bmarcadores? discursivos?\b/gi, "los conectores"],
+    [/\bimplicatura\b/gi, "lo que se da a entender sin decirlo"],
+];
+
+function limpiarJerga(texto) {
+    let salida = String(texto || "");
+    JERGA.forEach(([patron, claro]) => {
+        salida = salida.replace(patron, claro);
+    });
+    return salida;
 }
 
 function extractXmlAttributes(rawXml) {
@@ -1227,8 +1798,10 @@ function extractXmlAttributes(rawXml) {
 }
 
 function cleanGrammarText(text) {
+    // Antes borraba la palabra "no", lo que INVERTIA el significado del aviso:
+    // "no omitir sujeto" se mostraba como "omitir sujeto". Ahora se conserva y
+    // es frasearAviso() quien redacta la frase segun como venga el dato.
     return String(text || "")
-        .replace(/\bno\b\s*/i, "")
         .replace(/\s+/g, " ")
         .trim();
 }
@@ -1301,14 +1874,95 @@ function getNextLevel(currentLevelId) {
     return state.data.levels[idx + 1] || null;
 }
 
+// ─── Fichas tactiles (ordenar palabras) ───
+// Fase de RECONOCIMIENTO antes de la de produccion. Se generan solas a partir
+// de las respuestas correctas que ya existen en el banco, asi que no hay que
+// escribir contenido nuevo. Solo en los modulos bajos: a partir de M5 (B1) se
+// espera que el alumno ya produzca sin apoyo.
+const TILES_HASTA_MODULO = 4;
+const TILES_DISTRACTORES = ["molto", "sempre", "anche", "poi", "quando", "però", "così", "bene"];
+
+function numeroDeModulo(levelId) {
+    const m = /^M(\d+)/.exec(String(levelId || ""));
+    return m ? Number(m[1]) : 99;
+}
+
+// Trocea en palabras conservando los acentos (normalizeText los borraria).
+function palabrasDeFrase(frase) {
+    return String(frase || "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}' ]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(" ")
+        .filter(Boolean);
+}
+
+// Baraja estable: la misma frase da siempre el mismo orden, para que las fichas
+// no salten de sitio cada vez que se repinta la pantalla.
+function barajaEstable(items, semilla) {
+    let h = 0;
+    for (const ch of String(semilla)) {
+        h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    }
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+        h = (h * 1103515245 + 12345) >>> 0;
+        const j = h % (i + 1);
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+}
+
+function construirDrillTiles(levelId, drillTraduccion) {
+    const objetivo = (drillTraduccion.accepted || [])[0];
+    const palabras = palabrasDeFrase(objetivo);
+    if (palabras.length < 3 || palabras.length > 12) {
+        return null;
+    }
+
+    const distractores = TILES_DISTRACTORES
+        .filter((w) => !palabras.includes(w.toLowerCase()))
+        .slice(0, palabras.length > 6 ? 3 : 2);
+
+    const fuente = String(drillTraduccion.prompt || "").replace(/^Traduce al italiano:\s*/i, "").trim();
+
+    return {
+        id: `${drillTraduccion.id}-tiles`,
+        kind: "tiles",
+        label: "OP",
+        prompt: fuente ? `Ordena las palabras: ${fuente}` : "Ordena las palabras para formar la frase.",
+        accepted: drillTraduccion.accepted || [],
+        words: barajaEstable([...palabras, ...distractores], `${levelId}:${drillTraduccion.id}`),
+        feedback: "Toca las fichas en orden. Vuelve a tocar una ficha colocada para quitarla.",
+    };
+}
+
+function conFichasTactiles(levelId, pack) {
+    if (!pack || !Array.isArray(pack.drills) || numeroDeModulo(levelId) > TILES_HASTA_MODULO) {
+        return pack;
+    }
+    const drills = [];
+    pack.drills.forEach((drill) => {
+        if (drill.kind === "translation") {
+            const tiles = construirDrillTiles(levelId, drill);
+            if (tiles) {
+                drills.push(tiles);
+            }
+        }
+        drills.push(drill);
+    });
+    return { ...pack, drills };
+}
+
 function getExercisePack(levelId) {
     if (typeof EXERCISE_BANK !== "undefined") {
-        return EXERCISE_BANK[levelId] || null;
+        return conFichasTactiles(levelId, EXERCISE_BANK[levelId] || null);
     }
     if (typeof M1_EXERCISE_BANK === "undefined") {
         return null;
     }
-    return M1_EXERCISE_BANK[levelId] || null;
+    return conFichasTactiles(levelId, M1_EXERCISE_BANK[levelId] || null);
 }
 
 function getLearningGuide(levelId) {
@@ -1401,6 +2055,7 @@ function onRetryExercises() {
     if (!pack || !pack.drills?.length) return;
 
     state.exerciseByLevel[level.id] = { responses: {}, lastResult: null };
+    reiniciarSesion();
     persistState();
     renderLesson();
 }
@@ -1418,6 +2073,8 @@ function onCompleteLevel() {
             return;
         }
     }
+
+    leoAlAzar(LEO_NIVEL_HECHO, "celebra");
 
     if (!state.completedLevelIds.includes(level.id)) {
         state.completedLevelIds.push(level.id);
@@ -1455,7 +2112,7 @@ function onBackToLevels() {
 function onSpeakImmersive() {
     const level = getActiveLevel();
     if (!level) return;
-    speakItalian(level.immersiveInput || "");
+    speakItalian(fraseDelNivel(level));
 }
 
 function onNotesInput() {
@@ -1592,17 +2249,213 @@ function buildAdvanceMessage(requirements, weightedPercentage, gateFailures, sha
     return `Antes de avanzar: ${reasons.join("; ")}.`;
 }
 
+// Repaso espaciado DE VERDAD. Antes los intervalos eran fijos (1, 2 o 3 dias) y
+// nunca crecian: un nivel dominado seguia pidiendo repaso cada 3 dias, igual que
+// uno flojo. Ahora cada repaso superado empuja el siguiente mas lejos, y fallar
+// te devuelve al principio.
+const PASOS_REPASO = [1, 3, 7, 16, 35, 70];
+
 function scheduleReview(levelId, result) {
     if (!result) {
         return;
     }
     const today = dateKey(new Date());
-    const gapDays = result.weightedPercentage >= 88 ? 3 : result.weightedPercentage >= 80 ? 2 : 1;
+    const anterior = state.reviewByLevel[levelId];
+    const pasoPrevio = Number.isFinite(anterior?.paso) ? anterior.paso : -1;
+    const vaBien = result.weightedPercentage >= 80;
+    const paso = vaBien ? Math.min(pasoPrevio + 1, PASOS_REPASO.length - 1) : 0;
+
     state.reviewByLevel[levelId] = {
-        dueOn: addDays(today, gapDays),
+        dueOn: addDays(today, PASOS_REPASO[paso]),
+        paso,
         weakKinds: (result.weakKinds || []).slice(0, 2),
         weightedPercentage: result.weightedPercentage,
     };
+}
+
+// Tarjeta de resultado al terminar un nivel.
+function construirResumenNivel(level, resultado) {
+    const caja = document.createElement("div");
+    caja.className = "resumen-nivel";
+
+    const aciertos = Object.values(resultado.perDrill || {}).filter((r) => r.status === "success").length;
+    const total = Object.keys(resultado.perDrill || {}).length;
+    const titulo = resultado.canAdvance ? "¡Nivel superado!" : "Casi lo tienes";
+    const sub = resultado.canAdvance
+        ? "Puedes pasar al siguiente nivel."
+        : "Repite los que has fallado para desbloquear el siguiente.";
+
+    caja.innerHTML = `
+        <h3 class="resumen-titulo">${titulo}</h3>
+        <p class="resumen-sub">${sub}</p>
+        <div class="resumen-datos">
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${aciertos}/${total}</span>
+                <span class="resumen-dato-etiqueta">Aciertos</span>
+            </div>
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${resultado.weightedPercentage}%</span>
+                <span class="resumen-dato-etiqueta">Dominio</span>
+            </div>
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${palabrasAprendidas()}</span>
+                <span class="resumen-dato-etiqueta">Palabras</span>
+            </div>
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${state.streakDays}</span>
+                <span class="resumen-dato-etiqueta">Días seguidos</span>
+            </div>
+        </div>
+    `;
+    return caja;
+}
+
+// ─── Repaso rapido de 5 minutos ───
+// Para los dias en que no apetece empezar nivel nuevo pero no quieres perder la
+// racha. Mezcla lo que fallaste con ejercicios de niveles ya superados.
+function construirRepasoRapido() {
+    const pasos = [];
+    const usados = new Set();
+
+    // 1) Primero lo que fallaste, que es lo que mas necesitas.
+    state.colaFallos.forEach((f) => {
+        if (pasos.length >= 6) return;
+        const drill = getExercisePack(f.levelId)?.drills?.find((d) => d.id === f.drillId);
+        if (drill && drill.kind !== "shadowing") {
+            pasos.push({ tipo: "ejercicio", drill, levelId: f.levelId, esRepaso: true });
+            usados.add(`${f.levelId}:${f.drillId}`);
+        }
+    });
+
+    // 2) Rellenar con niveles ya completados cuyo repaso toca hoy o esta vencido.
+    const hoy = dateKey(new Date());
+    const vencidos = state.completedLevelIds.filter((id) => {
+        const r = state.reviewByLevel[id];
+        return !r?.dueOn || r.dueOn <= hoy;
+    });
+    barajaEstable(vencidos, hoy).forEach((levelId) => {
+        if (pasos.length >= 6) return;
+        const pack = getExercisePack(levelId);
+        const candidatos = (pack?.drills || []).filter((d) => d.kind !== "shadowing" && d.kind !== "conversation");
+        const elegido = barajaEstable(candidatos, `${levelId}:${hoy}`)[0];
+        if (elegido && !usados.has(`${levelId}:${elegido.id}`)) {
+            pasos.push({ tipo: "ejercicio", drill: elegido, levelId, esRepaso: true });
+        }
+    });
+
+    return pasos;
+}
+
+function hayRepasoDisponible() {
+    return construirRepasoRapido().length >= 3;
+}
+
+function pintarBotonRepaso() {
+    const btn = document.getElementById("repaso-btn");
+    if (!btn) {
+        return;
+    }
+    const hay = hayRepasoDisponible();
+    btn.classList.toggle("hidden", !hay);
+    if (hay && !btn.dataset.listo) {
+        btn.dataset.listo = "1";
+        btn.addEventListener("click", empezarRepasoRapido);
+    }
+}
+
+let enModoRepaso = false;
+
+function empezarRepasoRapido() {
+    const pasos = construirRepasoRapido();
+    if (!pasos.length) {
+        return;
+    }
+    enModoRepaso = true;
+    pasosRepaso = pasos;
+    pasoActual = 0;
+    resultadoDelPaso = null;
+    leoAlAzar(LEO_BIENVENIDA, "celebra");
+    renderAll();
+    dom.lessonSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+let pasosRepaso = [];
+
+// Contador visible de palabras dominadas: es la prueba de que avanzas.
+function pintarContadorPalabras() {
+    const barra = dom.streakDisplay?.parentElement;
+    if (!barra) {
+        return;
+    }
+    let chip = document.getElementById("palabras-chip");
+    if (!chip) {
+        chip = document.createElement("span");
+        chip.id = "palabras-chip";
+        chip.className = "palabras-chip";
+        chip.title = "Palabras que ya dominas";
+        barra.insertBefore(chip, dom.streakDisplay);
+    }
+    chip.textContent = `📚 ${palabrasAprendidas()}`;
+}
+
+// ─── Palabras que sabes ───
+// La app solo sabia que NIVELES habias completado, no que palabras dominabas,
+// asi que no podia ensenar progreso real ("sabes 214 palabras, 12 mas que la
+// semana pasada"), que es la sensacion de mejora que engancha.
+function registrarPalabra(palabra, acierto) {
+    const clave = String(palabra || "").trim().toLowerCase();
+    if (!clave) {
+        return;
+    }
+    const previo = state.palabras[clave] || { aciertos: 0, fallos: 0 };
+    if (acierto) {
+        previo.aciertos += 1;
+        previo.ultimoAcierto = dateKey(new Date());
+    } else {
+        previo.fallos += 1;
+    }
+    state.palabras[clave] = previo;
+}
+
+// Se cuenta como aprendida con dos aciertos y mas aciertos que fallos.
+function palabrasAprendidas() {
+    return Object.values(state.palabras).filter((p) => p.aciertos >= 2 && p.aciertos > p.fallos).length;
+}
+
+// ─── Los fallos vuelven ───
+// Antes se evaluaba un ejercicio y se olvidaba. Ahora lo que fallas entra en una
+// cola y reaparece al principio de la siguiente sesion.
+function apuntarFallo(levelId, drill) {
+    if (!drill || drill.kind === "shadowing") {
+        return;
+    }
+    const yaEsta = state.colaFallos.some((f) => f.levelId === levelId && f.drillId === drill.id);
+    if (!yaEsta) {
+        state.colaFallos.push({ levelId, drillId: drill.id, fecha: dateKey(new Date()) });
+    }
+    if (state.colaFallos.length > 30) {
+        state.colaFallos = state.colaFallos.slice(-30);
+    }
+}
+
+function quitarFallo(levelId, drillId) {
+    state.colaFallos = state.colaFallos.filter((f) => !(f.levelId === levelId && f.drillId === drillId));
+}
+
+// Hasta 2 ejercicios fallados de OTROS niveles, para colarlos al inicio.
+function fallosParaRepasar(levelIdActual) {
+    const salida = [];
+    for (const f of state.colaFallos) {
+        if (f.levelId === levelIdActual || salida.length >= 2) {
+            continue;
+        }
+        const pack = getExercisePack(f.levelId);
+        const drill = pack?.drills?.find((d) => d.id === f.drillId);
+        if (drill) {
+            salida.push({ levelId: f.levelId, drill });
+        }
+    }
+    return salida;
 }
 
 function addDays(dateString, days) {
@@ -1632,6 +2485,9 @@ function evaluateDrill(levelId, drill, response) {
     }
     if (drill.kind === "conversation") {
         return evaluateConversation(levelId, response, drill.expectedTokens || [], drill.minWords || 4, drill.feedback || "", drill.expectedStructures || []);
+    }
+    if (drill.kind === "tiles") {
+        return evaluateTiles(response, drill.words || [], drill.accepted || [], drill.feedback || "");
     }
     if (drill.kind === "cloze") {
         return evaluateCloze(response, drill.blanks || [], drill.feedback || "");
@@ -2061,7 +2917,7 @@ function hasLinkedProduction(rawResponse, normalized) {
     }
     const linkingMarkers = [
         "che",
-        "perche",
+        "perché",
         "quindi",
         "se",
         "quando",
@@ -2072,15 +2928,15 @@ function hasLinkedProduction(rawResponse, normalized) {
         "ciononostante",
         "pur",
         "sebbene",
-        "benche",
+        "benché",
         "inoltre",
         "infine",
         "in primo luogo",
         "in secondo luogo",
         "in breve",
         "ovvero",
-        "cioe",
-        "in realta",
+        "cioè",
+        "in realtà",
         "secondo me",
         "penso che",
         "spero che",
@@ -2093,6 +2949,47 @@ function hasLinkedProduction(rawResponse, normalized) {
 function getModuleNumber(levelId) {
     const match = String(levelId || "").match(/^M(\d+)-L\d+$/);
     return Number(match?.[1] || 0);
+}
+
+function evaluateTiles(response, words, accepted, feedback) {
+    const indices = Array.isArray(response) ? response : [];
+    const frase = indices.map((i) => words[i]).filter(Boolean).join(" ");
+    const normalizada = normalizeText(frase);
+    const solucion = accepted[0] || "";
+
+    if (!normalizada) {
+        return {
+            score: 0,
+            status: "fail",
+            label: "Sin responder",
+            feedback: "Toca las fichas para formar la frase.",
+            answer: solucion,
+        };
+    }
+
+    if (accepted.some((item) => normalizeText(item) === normalizada)) {
+        return {
+            score: 1,
+            status: "success",
+            label: "Correcto",
+            feedback: "Perfecto, orden correcto.",
+            answer: solucion,
+        };
+    }
+
+    // Puntuacion parcial: cuantas palabras estan en su sitio exacto.
+    const puestas = normalizada.split(" ");
+    const buenas = normalizeText(solucion).split(" ");
+    const aciertos = puestas.filter((p, i) => p === buenas[i]).length;
+    const ratio = buenas.length ? aciertos / buenas.length : 0;
+
+    return {
+        score: ratio >= 0.6 ? ratio : 0,
+        status: ratio >= 0.6 ? "partial" : "fail",
+        label: ratio >= 0.6 ? "Casi" : "Revisa",
+        feedback,
+        answer: solucion,
+    };
 }
 
 function evaluateCloze(response, blanks, feedback) {
@@ -2375,6 +3272,8 @@ function speakWithNeuralVoice(text, onDone) {
 }
 
 // ─── Voz local del sistema (respaldo offline) ───
+let avisoSinVozItaliana = false;
+
 function speakWithLocalVoice(text, onDone) {
     if (!("speechSynthesis" in window)) {
         return;
@@ -2382,15 +3281,31 @@ function speakWithLocalVoice(text, onDone) {
 
     window.speechSynthesis.cancel();
 
+    const italianVoice = pickItalianVoice();
+
+    // Sin voz italiana instalada, el navegador usaba la voz por defecto del
+    // sistema (en español o inglés) para leer italiano, y sonaba fatal. Es mejor
+    // avisar una vez y no reproducir nada que ensenar una pronunciacion falsa.
+    if (!italianVoice) {
+        if (!avisoSinVozItaliana) {
+            avisoSinVozItaliana = true;
+            if (typeof showToast === "function") {
+                showToast(
+                    "🔇 No hay voz italiana instalada",
+                    "Windows: Configuración › Hora e idioma › Voz › Agregar voces › Italiano",
+                    "goal"
+                );
+            }
+        }
+        onDone && onDone();
+        return;
+    }
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "it-IT";
     utterance.rate = 0.95;
     utterance.pitch = 1.05;
-
-    const italianVoice = pickItalianVoice();
-    if (italianVoice) {
-        utterance.voice = italianVoice;
-    }
+    utterance.voice = italianVoice;
 
     utterance.onend = () => {
         onDone && onDone();
