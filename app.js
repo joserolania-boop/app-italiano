@@ -441,9 +441,24 @@ function dateKey(dateObj) {
 function renderAll() {
     renderTopBar();
     renderProgress();
+    pintarBotonRepaso();
     renderModuleTabs();
     renderLevelGrid();
     renderLesson();
+}
+
+function terminarRepasoRapido() {
+    enModoRepaso = false;
+    pasosRepaso = [];
+    pasoActual = 0;
+    resultadoDelPaso = null;
+    awardXp(15, "Repaso rápido completado");
+    leoAlAzar(LEO_NIVEL_HECHO, "celebra");
+    if (typeof showToast === "function") {
+        showToast("⚡ Repaso terminado", "Has refrescado lo que peor llevabas", "goal");
+    }
+    persistState();
+    renderAll();
 }
 
 function renderTopBar() {
@@ -1136,6 +1151,9 @@ function construirDrillVocabulario(levelId, ficha) {
 // examinar directamente. Antes la app pedia producir sin haber ensenado nada:
 // la teoria estaba en un panel aparte que se podia saltar entero.
 function construirPasos(levelId, pack) {
+    if (enModoRepaso) {
+        return pasosRepaso;
+    }
     const teoria = getLearningGuide(levelId)?.theory || {};
     const drills = Array.isArray(pack?.drills) ? pack.drills : [];
     const pasos = [];
@@ -1258,7 +1276,14 @@ function renderPasoSesion(level, pack) {
     }
 
     const drill = paso.drill;
-    dom.exercisesList.appendChild(buildExerciseCard(level.id, drill, resultadoDelPaso));
+    const nivelDelPaso = paso.levelId || level.id;
+    if (paso.esRepaso) {
+        const marca = document.createElement("p");
+        marca.className = "marca-repaso";
+        marca.textContent = `🔁 Repaso de ${nivelDelPaso}`;
+        dom.exercisesList.appendChild(marca);
+    }
+    dom.exercisesList.appendChild(buildExerciseCard(nivelDelPaso, drill, resultadoDelPaso));
 
     if (resultadoDelPaso) {
         const aviso = document.createElement("div");
@@ -1285,14 +1310,18 @@ function renderPasoSesion(level, pack) {
             pasoActual += 1;
             resultadoDelPaso = null;
             if (pasoActual >= total) {
+                if (enModoRepaso) {
+                    terminarRepasoRapido();
+                    return;
+                }
                 onCheckExercises();
                 return;
             }
             renderAll();
             return;
         }
-        const respuesta = getDrillResponse(level.id, drill.id);
-        resultadoDelPaso = evaluateDrill(level.id, drill, respuesta);
+        const respuesta = getDrillResponse(nivelDelPaso, drill.id);
+        resultadoDelPaso = evaluateDrill(nivelDelPaso, drill, respuesta);
         const acerto = resultadoDelPaso.status === "success";
 
         // Apunta las palabras que dominas y manda a la cola lo que falles.
@@ -1376,6 +1405,11 @@ function renderExerciseArea(level) {
 
     dom.checkBtn.classList.remove("hidden");
     dom.checkBtn.disabled = false;
+
+    // Resumen del nivel: es el momento de mas satisfaccion y estaba soso.
+    if (lastResult) {
+        dom.exercisesList.appendChild(construirResumenNivel(level, lastResult));
+    }
 
     pack.drills.forEach((drill) => {
         const result = lastResult?.perDrill?.[drill.id] || null;
@@ -2238,6 +2272,114 @@ function scheduleReview(levelId, result) {
         weightedPercentage: result.weightedPercentage,
     };
 }
+
+// Tarjeta de resultado al terminar un nivel.
+function construirResumenNivel(level, resultado) {
+    const caja = document.createElement("div");
+    caja.className = "resumen-nivel";
+
+    const aciertos = Object.values(resultado.perDrill || {}).filter((r) => r.status === "success").length;
+    const total = Object.keys(resultado.perDrill || {}).length;
+    const titulo = resultado.canAdvance ? "¡Nivel superado!" : "Casi lo tienes";
+    const sub = resultado.canAdvance
+        ? "Puedes pasar al siguiente nivel."
+        : "Repite los que has fallado para desbloquear el siguiente.";
+
+    caja.innerHTML = `
+        <h3 class="resumen-titulo">${titulo}</h3>
+        <p class="resumen-sub">${sub}</p>
+        <div class="resumen-datos">
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${aciertos}/${total}</span>
+                <span class="resumen-dato-etiqueta">Aciertos</span>
+            </div>
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${resultado.weightedPercentage}%</span>
+                <span class="resumen-dato-etiqueta">Dominio</span>
+            </div>
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${palabrasAprendidas()}</span>
+                <span class="resumen-dato-etiqueta">Palabras</span>
+            </div>
+            <div class="resumen-dato">
+                <span class="resumen-dato-valor">${state.streakDays}</span>
+                <span class="resumen-dato-etiqueta">Días seguidos</span>
+            </div>
+        </div>
+    `;
+    return caja;
+}
+
+// ─── Repaso rapido de 5 minutos ───
+// Para los dias en que no apetece empezar nivel nuevo pero no quieres perder la
+// racha. Mezcla lo que fallaste con ejercicios de niveles ya superados.
+function construirRepasoRapido() {
+    const pasos = [];
+    const usados = new Set();
+
+    // 1) Primero lo que fallaste, que es lo que mas necesitas.
+    state.colaFallos.forEach((f) => {
+        if (pasos.length >= 6) return;
+        const drill = getExercisePack(f.levelId)?.drills?.find((d) => d.id === f.drillId);
+        if (drill && drill.kind !== "shadowing") {
+            pasos.push({ tipo: "ejercicio", drill, levelId: f.levelId, esRepaso: true });
+            usados.add(`${f.levelId}:${f.drillId}`);
+        }
+    });
+
+    // 2) Rellenar con niveles ya completados cuyo repaso toca hoy o esta vencido.
+    const hoy = dateKey(new Date());
+    const vencidos = state.completedLevelIds.filter((id) => {
+        const r = state.reviewByLevel[id];
+        return !r?.dueOn || r.dueOn <= hoy;
+    });
+    barajaEstable(vencidos, hoy).forEach((levelId) => {
+        if (pasos.length >= 6) return;
+        const pack = getExercisePack(levelId);
+        const candidatos = (pack?.drills || []).filter((d) => d.kind !== "shadowing" && d.kind !== "conversation");
+        const elegido = barajaEstable(candidatos, `${levelId}:${hoy}`)[0];
+        if (elegido && !usados.has(`${levelId}:${elegido.id}`)) {
+            pasos.push({ tipo: "ejercicio", drill: elegido, levelId, esRepaso: true });
+        }
+    });
+
+    return pasos;
+}
+
+function hayRepasoDisponible() {
+    return construirRepasoRapido().length >= 3;
+}
+
+function pintarBotonRepaso() {
+    const btn = document.getElementById("repaso-btn");
+    if (!btn) {
+        return;
+    }
+    const hay = hayRepasoDisponible();
+    btn.classList.toggle("hidden", !hay);
+    if (hay && !btn.dataset.listo) {
+        btn.dataset.listo = "1";
+        btn.addEventListener("click", empezarRepasoRapido);
+    }
+}
+
+let enModoRepaso = false;
+
+function empezarRepasoRapido() {
+    const pasos = construirRepasoRapido();
+    if (!pasos.length) {
+        return;
+    }
+    enModoRepaso = true;
+    pasosRepaso = pasos;
+    pasoActual = 0;
+    resultadoDelPaso = null;
+    leoAlAzar(LEO_BIENVENIDA, "celebra");
+    renderAll();
+    dom.lessonSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+let pasosRepaso = [];
 
 // Contador visible de palabras dominadas: es la prueba de que avanzas.
 function pintarContadorPalabras() {

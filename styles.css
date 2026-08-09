@@ -2099,3 +2099,110 @@ body {
     background: var(--blue-light);
     color: var(--blue);
 }
+
+
+/* Marca de ejercicio que viene de repaso */
+.marca-repaso {
+    margin-bottom: 8px;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--blue);
+}
+.repaso-cta { margin-left: 8px; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   Boton de accion fijo abajo + senal inmediata de acierto
+   ═══════════════════════════════════════════════════════════ */
+
+/* En movil habia que bajar para pulsar Comprobar. Ahora el boton queda
+   pegado al borde inferior, siempre a mano, como en las apps de idiomas. */
+@media (max-width: 720px) {
+    .sesion-accion {
+        position: sticky;
+        bottom: 12px;
+        z-index: 40;
+        box-shadow: 0 6px 20px rgba(20,60,40,.28);
+    }
+}
+
+/* La barra de progreso da un saltito al completar un tramo: senal inmediata
+   de que has avanzado, que es lo que engancha. */
+.sesion-progreso .tramo.hecho {
+    animation: tramoHecho .45s cubic-bezier(.3,1.6,.4,1);
+}
+
+@keyframes tramoHecho {
+    0%   { transform: scaleY(1); }
+    45%  { transform: scaleY(2.4); }
+    100% { transform: scaleY(1); }
+}
+
+/* Aviso de acierto: entra con un pequeno rebote. */
+.sesion-feedback.success { animation: aciertoEntra .38s cubic-bezier(.3,1.5,.4,1); }
+
+@keyframes aciertoEntra {
+    0%   { opacity: 0; transform: translateY(8px) scale(.97); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sesion-progreso .tramo.hecho,
+    .sesion-feedback.success { animation: none; }
+}
+
+/* ─── Pantalla de resultado del nivel ─── */
+.resumen-nivel {
+    margin-top: 18px;
+    padding: 22px;
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    border-radius: 18px;
+    text-align: center;
+}
+
+.resumen-titulo {
+    margin: 0 0 4px;
+    font-size: 1.35rem;
+    color: var(--accent-dark);
+}
+
+.resumen-sub {
+    margin: 0 0 18px;
+    color: var(--text-secondary);
+    font-size: .92rem;
+}
+
+.resumen-datos {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.resumen-dato {
+    min-width: 92px;
+    padding: 12px 14px;
+    background: var(--border-light);
+    border-radius: 14px;
+}
+
+.resumen-dato-valor {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--accent-dark);
+    line-height: 1.1;
+}
+
+.resumen-dato-etiqueta {
+    display: block;
+    margin-top: 2px;
+    font-size: .74rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+[data-theme="dark"] .resumen-dato { background: rgba(255,255,255,.05); }
