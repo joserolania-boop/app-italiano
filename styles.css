@@ -49,7 +49,11 @@ body {
 }
 
 h1, h2, h3 {
-    font-family: "Playfair Display", Georgia, serif;
+    /* Una sola familia en toda la app: la serif clasica chocaba con los botones
+       redondeados de tipo juego y hacia que pareciesen dos apps distintas. */
+    font-family: inherit;
+    font-weight: 700;
+    letter-spacing: -.02em;
     line-height: 1.2;
 }
 
@@ -2001,3 +2005,43 @@ body.modal-open { overflow: hidden; }
 .uso-chip.uso-frecuente { background: var(--blue-light);   color: var(--blue); }
 .uso-chip.uso-entender  { background: var(--orange-light); color: var(--orange-shadow); }
 .uso-chip.uso-formal    { background: #f3e8ff;             color: #7c3aed; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   REDISENO: fondo limpio, un acento, esquina despejada
+   ═══════════════════════════════════════════════════════════ */
+
+/* 1. Nada de fotos detras del texto. Las fotos de Italia quedan solo en la
+   pantalla de seleccion, donde son ambiente y no compiten con la lectura. */
+#lesson-section,
+.lesson-section {
+    position: relative;
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow);
+}
+
+body:has(#lesson-section:not(.hidden)) .selector-bg-layer,
+body:has(#lesson-section:not(.hidden)) .italy-bg {
+    opacity: 0 !important;
+    transition: opacity .4s ease;
+}
+
+/* 2. Fondo general plano y tranquilo. */
+body {
+    background-image: none;
+    background: var(--bg);
+}
+
+/* 3. Esquina despejada: solo Leo. El widget flotante de Ko-fi y el boton del
+   pie se amontonaban encima de el, sobre todo en movil. Queda el de cabecera. */
+.floatingchat-container-wrap,
+.floatingchat-container-wrap-mobi,
+#kofi-footer-link,
+.kofi-btn {
+    display: none !important;
+}
+
+/* 4. Jerarquia mas clara en la cabecera del nivel. */
+.lesson-header { padding-top: 4px; }
+.immersive-card { box-shadow: none; }

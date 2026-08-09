@@ -305,8 +305,9 @@ function initLessonBackgrounds() {
     // Precargar para que el crossfade no parpadee
     LESSON_BACKGROUNDS.forEach((src) => { const img = new Image(); img.src = src; });
     showLessonBg(lessonBgOrder[0]);
+    // Rotacion desactivada: cambiar de foto cada 14 segundos mientras el
+    // usuario lee o responde distrae mas que ambienta. Se deja una fija.
     if (lessonBgTimer) clearInterval(lessonBgTimer);
-    lessonBgTimer = setInterval(rotateLessonBg, 14000);
 }
 
 // ─── Toast / notificaciones ───
