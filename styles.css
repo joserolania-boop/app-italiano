@@ -1160,7 +1160,7 @@ h1, h2, h3 {
 .exercise-sentence {
     padding: 10px 14px;
     border-radius: var(--radius-sm);
-    background: white;
+    background: var(--surface);
     border: 1px solid var(--border);
     font-size: .9rem;
     margin-bottom: 10px;
@@ -1172,7 +1172,7 @@ h1, h2, h3 {
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
-    background: white;
+    background: var(--surface);
     font: inherit;
     font-size: .9rem;
     color: var(--text);
@@ -1190,7 +1190,7 @@ h1, h2, h3 {
     padding: 10px 14px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
-    background: white;
+    background: var(--surface);
     font: inherit;
     font-size: .9rem;
     color: var(--text);
@@ -2045,3 +2045,44 @@ body {
 /* 4. Jerarquia mas clara en la cabecera del nivel. */
 .lesson-header { padding-top: 4px; }
 .immersive-card { box-shadow: none; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   MODO OSCURO: arreglos de los componentes nuevos
+   ═══════════════════════════════════════════════════════════ */
+
+/* Las etiquetas de tipo de ejercicio y de uso llevaban colores claros fijos,
+   que en oscuro quedaban como manchas brillantes ilegibles. */
+[data-theme="dark"] .exercise-type.mp,
+[data-theme="dark"] .exercise-type.voc { background: #2e2340; color: #c9a6ff; }
+[data-theme="dark"] .exercise-type.sh,
+[data-theme="dark"] .exercise-type.vb { background: #3a2e18; color: #f2c777; }
+[data-theme="dark"] .uso-chip.uso-formal { background: #2e2340; color: #c9a6ff; }
+
+/* Fichas tactiles: en oscuro necesitan contraste propio. */
+[data-theme="dark"] .tile {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+}
+[data-theme="dark"] .tile:hover { background: var(--accent-light); border-color: var(--accent); }
+[data-theme="dark"] .tile-selected { background: var(--accent-light); border-color: var(--accent); color: var(--accent-dark); }
+
+/* Zona donde caen las fichas. */
+[data-theme="dark"] .tiles-answer { background: rgba(255,255,255,.03); border-color: var(--border); }
+
+/* Aviso de correccion inmediata. */
+[data-theme="dark"] .sesion-feedback.success { background: var(--accent-light); color: var(--accent-dark); }
+[data-theme="dark"] .sesion-feedback.partial { background: var(--orange-light); color: #ffb27a; }
+[data-theme="dark"] .sesion-feedback.fail    { background: var(--red-light);    color: #ff9b9b; }
+
+/* Tarjeta de leccion y su ejemplo. */
+[data-theme="dark"] .leccion-card { background: linear-gradient(160deg, #1c2c3a, var(--surface)); }
+[data-theme="dark"] .leccion-ejemplo { background: rgba(255,255,255,.04); color: var(--text-secondary); }
+
+/* Teoria plegable. */
+[data-theme="dark"] .learning-details { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .learning-summary:hover { background: rgba(255,255,255,.04); }
+
+/* Nivel bloqueado: en oscuro el gris se comia el candado. */
+[data-theme="dark"] .path-node.bloqueado { opacity: .35; }
