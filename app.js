@@ -710,8 +710,10 @@ function renderLesson() {
     // tal cual en los ejercicios (71% de solape medio, 71 niveles por encima del
     // 60%), asi que daba la respuesta hecha. Con el ejemplo baja al 25%.
     dom.immersiveText.textContent = fraseDelNivel(level);
-    dom.helpGrammar.textContent = simplifyGrammar(level.grammar);
-    dom.helpPatch.textContent = buildPatchCoaching(level.patchPriority);
+    // Si el nivel tiene nota reescrita en lenguaje de aprendiz, se usa esa.
+    const nota = typeof NOTAS_CLARAS !== "undefined" ? NOTAS_CLARAS[level.id] : null;
+    dom.helpGrammar.textContent = nota ? nota.practica : simplifyGrammar(level.grammar);
+    dom.helpPatch.textContent = nota ? nota.ojo : buildPatchCoaching(level.patchPriority);
 
     dom.notesArea.value = state.notesByLevel[level.id] || "";
     renderLearningGuide(level);
