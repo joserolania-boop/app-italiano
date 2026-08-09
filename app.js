@@ -1071,9 +1071,12 @@ function construirDrillConjugacion(levelId, ficha) {
     };
 }
 
-// Vocabulario -> choice: elegir el equivalente, con distractores de la misma ficha.
+// Vocabulario -> choice. Usa el banco de vocabulario del nivel (palabras
+// extraidas de sus propios ejercicios) y, si ese nivel no tiene, cae a la ficha
+// de referencia como respaldo.
 function construirDrillVocabulario(levelId, ficha) {
-    const filas = filasUtiles(ficha);
+    const delBanco = typeof VOCABULARY_BANK !== "undefined" ? VOCABULARY_BANK[levelId] : null;
+    const filas = Array.isArray(delBanco) && delBanco.length >= 3 ? delBanco : filasUtiles(ficha);
     if (filas.length < 3) {
         return null;
     }
@@ -1090,10 +1093,10 @@ function construirDrillVocabulario(levelId, ficha) {
         id: "voc-1",
         kind: "choice",
         label: "VOC",
-        prompt: `¿Qué corresponde a «${String(buena[0]).trim()}»?`,
+        prompt: `¿Qué significa «${String(buena[0]).trim()}»?`,
         options: opciones,
         answer: String(buena[1]).trim(),
-        feedback: `Vocabulario del cuadro «${ficha.title}».`,
+        feedback: ficha ? `Vocabulario del cuadro «${ficha.title}».` : "Vocabulario de este nivel.",
     };
 }
 
@@ -1121,15 +1124,15 @@ function construirPasos(levelId, pack) {
     // El banco marca cada ficha con su tipo: las de "Conjugacion" dan ejercicio
     // de verbos; las de "Lista" (expresiones, numeros...) dan el de vocabulario.
     const fichaVerbos = fichas.find((f) => f.type === "Conjugacion");
-    const fichaVocab = fichas.find((f) => f.type === "Lista" || f.type === "Articulos");
+    const fichaVocab = fichas.find((f) => f.type === "Lista" || f.type === "Articulos") || null;
 
     if (fichaVerbos) {
         const d = construirDrillConjugacion(levelId, fichaVerbos);
         if (d) pasos.push({ tipo: "ejercicio", drill: d });
     }
-    if (fichaVocab) {
-        const d = construirDrillVocabulario(levelId, fichaVocab);
-        if (d) pasos.push({ tipo: "ejercicio", drill: d });
+    const dVoc = construirDrillVocabulario(levelId, fichaVocab);
+    if (dVoc) {
+        pasos.push({ tipo: "ejercicio", drill: dVoc });
     }
 
     drills.forEach((drill, i) => {
