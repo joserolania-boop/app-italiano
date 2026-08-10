@@ -1100,9 +1100,35 @@ function filasUtiles(ficha) {
     );
 }
 
+const PRONOMBRES_CONJUGACION = ["io", "tu", "lui/lei", "noi", "voi", "loro"];
+
+// Algunas fichas de conjugacion guardan el paradigma entero en una sola celda
+// ("parlo, parli, parla, parliamo, parlate, parlano") porque asi se lee mejor
+// en la leccion. Usada tal cual, el ejercicio pedia escribir las seis formas
+// juntas en un solo hueco: lento y con una precision imposible de acertar a la
+// primera. Aqui se destripa esa celda en una fila por persona, para que cada
+// hueco pida una sola forma.
+function formasParaEjercicio(ficha) {
+    const salida = [];
+    filasUtiles(ficha).forEach((f) => {
+        const etiqueta = String(f[0]).trim();
+        const valor = String(f[1]).trim();
+        if (valor.includes("/")) return; // alternancia, no vale como respuesta unica
+        if (!valor.includes(",")) {
+            salida.push([etiqueta, valor]);
+            return;
+        }
+        valor.split(",").map((v) => v.trim()).filter(Boolean).forEach((forma, i) => {
+            const pronombre = PRONOMBRES_CONJUGACION[i] || `forma ${i + 1}`;
+            salida.push([`${etiqueta} · ${pronombre}`, forma]);
+        });
+    });
+    return salida;
+}
+
 // Conjugacion -> cloze: "io ___ · tu ___ · lui/lei ___"
 function construirDrillConjugacion(levelId, ficha) {
-    const filas = filasUtiles(ficha).filter((f) => !String(f[1]).includes("/"));
+    const filas = formasParaEjercicio(ficha);
     if (filas.length < 3) {
         return null;
     }
@@ -1147,6 +1173,31 @@ function construirDrillVocabulario(levelId, ficha) {
     };
 }
 
+// Lista COMPLETA de ejercicios de un nivel: los del banco de siempre mas los
+// de conjugacion y vocabulario, que se generan aparte a partir de las fichas
+// de referencia. Antes VB y VOC se anadian solo a la SESION (construirPasos)
+// pero no aqui, asi que el alumno los hacia, recibia feedback de acierto o
+// fallo, y luego no contaban absolutamente nada para aprobar el nivel: se
+// puntuaba con pack.drills a secas, que nunca los incluia. Ahora hay una sola
+// lista y se usa en todos los sitios que deciden si el nivel esta superado.
+function drillsCompletosDelNivel(levelId, pack) {
+    const base = Array.isArray(pack?.drills) ? pack.drills : [];
+    const nivel = (state.data?.levels || []).find((l) => l.id === levelId);
+    const fichas = nivel ? getTheoryReferences(nivel, getLearningGuide(levelId)) : [];
+    const fichaVerbos = fichas.find((f) => f.type === "Conjugacion");
+    const fichaVocab = fichas.find((f) => f.type === "Lista" || f.type === "Articulos") || null;
+
+    const extra = [];
+    if (fichaVerbos) {
+        const d = construirDrillConjugacion(levelId, fichaVerbos);
+        if (d) extra.push(d);
+    }
+    const dVoc = construirDrillVocabulario(levelId, fichaVocab);
+    if (dVoc) extra.push(dVoc);
+
+    return [...extra, ...base];
+}
+
 // La sesion mezcla LECCIONES obligatorias con los ejercicios, en vez de
 // examinar directamente. Antes la app pedia producir sin haber ensenado nada:
 // la teoria estaba en un panel aparte que se podia saltar entero.
@@ -1155,7 +1206,6 @@ function construirPasos(levelId, pack) {
         return pasosRepaso;
     }
     const teoria = getLearningGuide(levelId)?.theory || {};
-    const drills = Array.isArray(pack?.drills) ? pack.drills : [];
     const pasos = [];
 
     // Lo que fallaste en sesiones anteriores vuelve, antes de lo nuevo.
@@ -1173,27 +1223,18 @@ function construirPasos(levelId, pack) {
         });
     }
 
-    // Justo tras la leccion, practica lo que la tabla acaba de ensenar.
-    const nivel = (state.data?.levels || []).find((l) => l.id === levelId);
-    const fichas = nivel ? getTheoryReferences(nivel, getLearningGuide(levelId)) : [];
-    // El banco marca cada ficha con su tipo: las de "Conjugacion" dan ejercicio
-    // de verbos; las de "Lista" (expresiones, numeros...) dan el de vocabulario.
-    const fichaVerbos = fichas.find((f) => f.type === "Conjugacion");
-    const fichaVocab = fichas.find((f) => f.type === "Lista" || f.type === "Articulos") || null;
-
-    if (fichaVerbos) {
-        const d = construirDrillConjugacion(levelId, fichaVerbos);
-        if (d) pasos.push({ tipo: "ejercicio", drill: d });
-    }
-    const dVoc = construirDrillVocabulario(levelId, fichaVocab);
-    if (dVoc) {
-        pasos.push({ tipo: "ejercicio", drill: dVoc });
-    }
-
-    drills.forEach((drill, i) => {
+    // Justo tras la leccion, practica lo que la tabla acaba de ensenar: VB y
+    // VOC primero, seguidos de los ejercicios de siempre. Misma lista que se
+    // usa para puntuar el nivel, asi que lo que aqui se practica es lo mismo
+    // que despues cuenta.
+    const todos = drillsCompletosDelNivel(levelId, pack);
+    let avisoInsertado = false;
+    todos.forEach((drill) => {
         pasos.push({ tipo: "ejercicio", drill });
-        // A mitad de camino, recordatorio del fallo tipico antes de seguir.
-        if (i === 1 && teoria.mistake) {
+        // Recordatorio del fallo tipico justo tras la primera produccion libre
+        // (la traduccion), sea cual sea su posicion en la lista.
+        if (!avisoInsertado && drill.kind === "translation" && teoria.mistake) {
+            avisoInsertado = true;
             pasos.push({
                 tipo: "leccion",
                 titulo: "Ojo con este error",
@@ -1411,7 +1452,9 @@ function renderExerciseArea(level) {
         dom.exercisesList.appendChild(construirResumenNivel(level, lastResult));
     }
 
-    pack.drills.forEach((drill) => {
+    // Misma lista que se puntua: si no, aqui faltaban los ejercicios de
+    // conjugacion y vocabulario que el alumno SI habia hecho en la sesion.
+    drillsCompletosDelNivel(level.id, pack).forEach((drill) => {
         const result = lastResult?.perDrill?.[drill.id] || null;
         const card = buildExerciseCard(level.id, drill, result);
         dom.exercisesList.appendChild(card);
@@ -1822,7 +1865,7 @@ function getLearningRequirements(levelId, pack) {
         passPercentage = 80;
     }
 
-    const kinds = new Set((pack?.drills || []).map((drill) => drill.kind));
+    const kinds = new Set(drillsCompletosDelNivel(levelId, pack).map((drill) => drill.kind));
     const requiredKinds = ["translation", "cloze", "conversation"].filter((kind) => kinds.has(kind));
     const minByKind = {
         translation: 0.7,
@@ -2000,10 +2043,11 @@ function onCheckExercises() {
     if (!pack || !pack.drills?.length) return;
 
     const levelState = getExerciseState(level.id);
+    const todos = drillsCompletosDelNivel(level.id, pack);
     const perDrill = {};
     let totalScore = 0;
 
-    pack.drills.forEach((drill) => {
+    todos.forEach((drill) => {
         const result = evaluateDrill(level.id, drill, levelState.responses?.[drill.id]);
         perDrill[drill.id] = result;
         totalScore += result.score;
@@ -2019,7 +2063,7 @@ function onCheckExercises() {
         lastResult: {
             perDrill,
             totalScore,
-            maxScore: pack.drills.length,
+            maxScore: todos.length,
             ...summary,
         },
     };
@@ -2173,7 +2217,8 @@ function onResetProgress() {
 
 function buildAttemptSummary(level, pack, perDrill, totalScore) {
     const requirements = getLearningRequirements(level.id, pack);
-    const results = pack.drills.map((drill) => ({ drill, result: perDrill[drill.id] }));
+    const todos = drillsCompletosDelNivel(level.id, pack);
+    const results = todos.map((drill) => ({ drill, result: perDrill[drill.id] }));
     const byKind = groupScoresByKind(results);
     const weightedPercentage = computeWeightedPercentage(byKind);
     const foundationPercentage = averagePercent([byKind.translation, byKind.cloze, byKind.choice]);
@@ -2188,7 +2233,7 @@ function buildAttemptSummary(level, pack, perDrill, totalScore) {
     const canAdvance = weightedPercentage >= requirements.passPercentage && gateFailures.length === 0 && !shadowingFailed;
 
     return {
-        percentage: Math.round((totalScore / pack.drills.length) * 100),
+        percentage: Math.round((totalScore / todos.length) * 100),
         weightedPercentage,
         foundationPercentage,
         productionPercentage,
@@ -2320,7 +2365,9 @@ function construirRepasoRapido() {
     // 1) Primero lo que fallaste, que es lo que mas necesitas.
     state.colaFallos.forEach((f) => {
         if (pasos.length >= 6) return;
-        const drill = getExercisePack(f.levelId)?.drills?.find((d) => d.id === f.drillId);
+        // Lista completa: un fallo de conjugacion o vocabulario no vive en
+        // pack.drills y desaparecia del repaso sin avisar.
+        const drill = drillsCompletosDelNivel(f.levelId, getExercisePack(f.levelId)).find((d) => d.id === f.drillId);
         if (drill && drill.kind !== "shadowing") {
             pasos.push({ tipo: "ejercicio", drill, levelId: f.levelId, esRepaso: true });
             usados.add(`${f.levelId}:${f.drillId}`);
@@ -2336,7 +2383,7 @@ function construirRepasoRapido() {
     barajaEstable(vencidos, hoy).forEach((levelId) => {
         if (pasos.length >= 6) return;
         const pack = getExercisePack(levelId);
-        const candidatos = (pack?.drills || []).filter((d) => d.kind !== "shadowing" && d.kind !== "conversation");
+        const candidatos = drillsCompletosDelNivel(levelId, pack).filter((d) => d.kind !== "shadowing" && d.kind !== "conversation");
         const elegido = barajaEstable(candidatos, `${levelId}:${hoy}`)[0];
         if (elegido && !usados.has(`${levelId}:${elegido.id}`)) {
             pasos.push({ tipo: "ejercicio", drill: elegido, levelId, esRepaso: true });
@@ -2450,7 +2497,10 @@ function fallosParaRepasar(levelIdActual) {
             continue;
         }
         const pack = getExercisePack(f.levelId);
-        const drill = pack?.drills?.find((d) => d.id === f.drillId);
+        // Busca en la lista completa: si el fallo era de conjugacion o
+        // vocabulario, no vivia en pack.drills y el repaso lo perdia en
+        // silencio.
+        const drill = drillsCompletosDelNivel(f.levelId, pack).find((d) => d.id === f.drillId);
         if (drill) {
             salida.push({ levelId: f.levelId, drill });
         }

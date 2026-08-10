@@ -1,9 +1,17 @@
 /* Service Worker — Maestro Italiano
    Cachea el app-shell para uso offline. Estrategia:
    - Navegacion/HTML: network-first (para recibir actualizaciones).
-   - Resto de recursos propios: stale-while-revalidate. */
+   - Resto de recursos propios: network-first tambien, con la cache como
+     respaldo solo si falla la red.
+   Antes los ficheros propios (JS/CSS) iban con stale-while-revalidate: si un
+   despliegue cambiaba el contenido de un fichero sin cambiar su "?v=" en
+   index.html, esa URL exacta seguia sirviendo la copia vieja de la cache y
+   la version nueva solo se guardaba para la carga SIGUIENTE, no la actual.
+   Eso es justo lo que se veia como "sale la version antigua antes que la
+   nueva". Con la app cambiando cada dia, la frescura importa mas que ahorrar
+   una peticion de red. */
 
-const CACHE_NAME = "maestro-italiano-v6";
+const CACHE_NAME = "maestro-italiano-v7";
 const APP_SHELL = [
     "./",
     "./index.html",
@@ -70,17 +78,14 @@ self.addEventListener("fetch", (event) => {
     }
 
     event.respondWith(
-        caches.match(request).then((cached) => {
-            const network = fetch(request)
-                .then((response) => {
-                    if (response && response.status === 200) {
-                        const copy = response.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
-                    }
-                    return response;
-                })
-                .catch(() => cached);
-            return cached || network;
-        })
+        fetch(request)
+            .then((response) => {
+                if (response && response.status === 200) {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+                }
+                return response;
+            })
+            .catch(() => caches.match(request))
     );
 });
