@@ -1195,7 +1195,12 @@ function drillsCompletosDelNivel(levelId, pack) {
     const dVoc = construirDrillVocabulario(levelId, fichaVocab);
     if (dVoc) extra.push(dVoc);
 
-    return [...extra, ...base];
+    // Shadowing (escuchar y repetir) fuera: pedia reconocimiento de voz, no
+    // todo el mundo puede o quiere usarlo, y bloqueaba el avance por no
+    // completar precisamente esa parte. Se filtra aqui, el unico sitio que
+    // alimenta la sesion, la puntuacion y el repaso, asi que desaparece de
+    // los tres a la vez sin tocar las fichas de shadowing de cada nivel.
+    return [...extra, ...base].filter((d) => d.kind !== "shadowing");
 }
 
 // La sesion mezcla LECCIONES obligatorias con los ejercicios, en vez de
