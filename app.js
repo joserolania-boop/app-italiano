@@ -1339,7 +1339,11 @@ function renderPasoSesion(level, pack) {
         if (resultadoDelPaso.status !== "success" && resultadoDelPaso.answer) {
             const sol = document.createElement("span");
             sol.className = "sesion-solucion";
-            sol.textContent = `Solución: ${resultadoDelPaso.answer}`;
+            // En "conversation" no hay una unica frase correcta: answer es la
+            // lista de piezas que se buscaban, no un modelo a copiar. Decirlo
+            // como "Solucion" prometia una frase que en realidad no existe.
+            const etiqueta = drill.kind === "conversation" ? "Se buscaba" : "Solución";
+            sol.textContent = `${etiqueta}: ${resultadoDelPaso.answer}`;
             aviso.appendChild(sol);
         }
         dom.exercisesList.appendChild(aviso);
@@ -1706,9 +1710,12 @@ function buildExerciseCard(levelId, drill, result) {
     if (result) {
         const feedback = document.createElement("div");
         feedback.className = `feedback-box ${feedbackClass(result.status)}`;
+        // "conversation" no tiene una unica respuesta correcta: result.answer
+        // ahi es la lista de piezas buscadas, no una frase modelo.
+        const etiquetaSolucion = drill.kind === "conversation" ? "Se buscaba" : "Respuesta esperada";
         feedback.innerHTML = `
             ${result.feedback || ""}
-            ${result.answer ? `<span class="expected-answer">Respuesta esperada: ${escapeHtml(result.answer)}</span>` : ""}
+            ${result.answer ? `<span class="expected-answer">${etiquetaSolucion}: ${escapeHtml(result.answer)}</span>` : ""}
         `;
         wrapper.appendChild(feedback);
     }
@@ -2830,9 +2837,13 @@ function buildConversationFeedback(baseFeedback, context) {
 }
 
 function buildConversationAnswer(expectedTokens, expectedStructures) {
+    // No es una frase real: es la lista de piezas que se buscaban en la
+    // respuesta. Mostrarla con "Solucion:" delante prometia una frase
+    // modelo y solo daba palabras sueltas ("il, la"), que ni siquiera es
+    // una construccion valida en italiano.
     const parts = [];
     if (expectedTokens?.length) {
-        parts.push(expectedTokens.join(", "));
+        parts.push(expectedTokens.map((t) => t.replace(/\|/g, " o ")).join(", "));
     }
     if (expectedStructures?.length) {
         parts.push(`estructura: ${expectedStructures.join(" / ")}`);
@@ -2848,6 +2859,15 @@ function matchesExpectedItem(normalized, words, item) {
     const rawItem = String(item || "").trim();
     if (!rawItem) {
         return false;
+    }
+
+    // Grupo de alternativas: "il|la" vale si aparece cualquiera de las dos.
+    // Sirve para pedir "usa un articulo" sin obligar a que la respuesta
+    // incluya a la vez el masculino y el femenino, cuando el enunciado nunca
+    // pidio esa mezcla (ej. "describe dos objetos de una casa" se puede
+    // responder valida y correctamente con dos objetos femeninos).
+    if (rawItem.includes("|")) {
+        return rawItem.split("|").some((alt) => matchesExpectedItem(normalized, words, alt));
     }
 
     if (rawItem.startsWith("-")) {
